@@ -8,24 +8,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>FV-1 DSP Assembler build 08</h1>
 
-        <h2>Input Source Code</h2>
-            <div class="file-input">
-                <input type="file" id="fileInput" accept=".asm,.txt,.spn" onchange="loadFile()">
-                <select id="exampleSelect" onchange="loadExample()">
-                    <option value="">Select an example program...</option>
-                    <option value="passthrough">Simple Pass-through</option>
-                    <option value="delay">Simple Delay</option>
-                    <option value="chorus">Simple Chorus</option>
-                </select>
-            </div>
-
-        <div class="editor-container">
-    <div id="editor" style="width: 100%; height: 400px;"></div>
-  </div>
-
-  <!-- Monaco Editor Loader -->
+        <!-- Monaco Editor Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
   <script>
     let editor; // global editor instance
@@ -89,7 +73,7 @@
 
 
       // Create the Monaco Editor
-      var editor = monaco.editor.create(document.getElementById('editor'), {
+      editor = monaco.editor.create(document.getElementById('editor'), {
         language: 'spin',
         theme: 'spinTheme',
         automaticLayout: true,
@@ -110,9 +94,14 @@
       }, 500);
     });
   </script>
-        
-<!--         <div class="input-section">
-            <h2>Input Source Code</h2>
+
+        <div class="header-bar">
+          <h1>DSP Sandbox Editor <span class="build">(build 09)</span></h1>
+          <img src="icon.png" alt="App Icon" class="app-icon">
+        </div>
+
+
+        <h2>Input Source Code</h2>
             <div class="file-input">
                 <input type="file" id="fileInput" accept=".asm,.txt,.spn" onchange="loadFile()">
                 <select id="exampleSelect" onchange="loadExample()">
@@ -122,21 +111,32 @@
                     <option value="chorus">Simple Chorus</option>
                 </select>
             </div>
-            <div class="editor-container">
-                <div class="line-numbers" id="lineNumbers">1</div>
-                <textarea id="sourceCode" placeholder="Enter FV-1 assembly code here or select an example above..."></textarea>
-            </div>
-            
-            <div class="options">
+
+        <div class="editor-container">
+    <div id="editor" style="width: 100%; height: 400px;"></div>
+  </div>
+        <div class="editor-help-text">
+        <label>
+          <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
+          <span class="shortcut">Ctrl+F / Cmd+F Find</span>
+          <span class="shortcut">Ctrl+H / Cmd+H Replace</span>
+          <span class="shortcut">F3 Find Next</span>
+        </label>
+
+        </div>
+              <div class="options">
                 <label>
                     <input type="checkbox" id="clampOption"> Clamp out-of-range values
                 </label>
                 <label>
-                    <input type="checkbox" id="spinRealsOption"> SpinASM reals (2 → 2.0, 1 → 1.0)
+                    <input type="checkbox" id="spinRealsOption"> Use '1' and '2' as 1.0 and 2.0 (compatibility mode)
+                </label>
+                <label>
+                    <input type="checkbox" id="minimapToggle" onchange="toggleMinimap()"> Show editor mini-map
                 </label>
             </div>
-        </div> -->
-        
+
+    
         <div>
             <button onclick="assemble()">Assemble</button>
             <button onclick="clearAssembly()">Clear Assembly</button>

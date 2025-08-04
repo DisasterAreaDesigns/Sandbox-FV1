@@ -1,45 +1,47 @@
     // <script>
     // line numbers
 
+    // const textarea = document.getElementById('sourceCode');
+    // const lineNumbers = document.getElementById('lineNumbers');
 
+    // function updateLineNumbers() {
+    //     const lines = textarea.value.split('\n');
+    //     const lineHeight = 21; // Approximate line height in pixels (1.5 * 14px font)
+    //     const visibleLines = Math.ceil(300 / lineHeight); // 300px is textarea height
+    //     const scrollTop = textarea.scrollTop;
+    //     const firstVisibleLine = Math.floor(scrollTop / lineHeight);
 
-    const textarea = document.getElementById('sourceCode');
-    const lineNumbers = document.getElementById('lineNumbers');
+    //     let lineNumbersText = '';
+    //     for (let i = 1; i <= lines.length; i++) {
+    //         lineNumbersText += i + '\n';
+    //     }
+    //     lineNumbers.textContent = lineNumbersText;
 
-    function updateLineNumbers() {
-        const lines = textarea.value.split('\n');
-        const lineHeight = 21; // Approximate line height in pixels (1.5 * 14px font)
-        const visibleLines = Math.ceil(300 / lineHeight); // 300px is textarea height
-        const scrollTop = textarea.scrollTop;
-        const firstVisibleLine = Math.floor(scrollTop / lineHeight);
+    //     // Sync scroll
+    //     lineNumbers.scrollTop = textarea.scrollTop;
+    // }
 
-        let lineNumbersText = '';
-        for (let i = 1; i <= lines.length; i++) {
-            lineNumbersText += i + '\n';
-        }
-        lineNumbers.textContent = lineNumbersText;
+    // textarea.addEventListener('input', updateLineNumbers);
+    // textarea.addEventListener('scroll', () => {
+    //     lineNumbers.scrollTop = textarea.scrollTop;
+    // });
 
-        // Sync scroll
-        lineNumbers.scrollTop = textarea.scrollTop;
-    }
-
-    textarea.addEventListener('input', updateLineNumbers);
-    textarea.addEventListener('scroll', () => {
-        lineNumbers.scrollTop = textarea.scrollTop;
-    });
-
-    updateLineNumbers();
+    // updateLineNumbers();
 
     // Example programs
     const examples = {
         passthrough: `; Simple Pass-through
 ; Use this for BYPASS 0.hex on Sandbox Pedal!
-LDAX ADCL
-WRAX DACL, 0
-LDAX ADCR  
-WRAX DACR, 0`,
 
-        delay: `mem     delay   24000
+ldax    adcl        ; read in the left input
+wrax    dacl, 0.0   ; write to left output and clear acc
+ldax    adcr        ; read in right input
+wrax    dacr, 0.0   ; write to right output and clear`,
+
+        delay: `; Simple Delay Effect
+; POT0: delay mix, POT1: delay time, POT2: delay repeats
+
+mem     delay   24000
 
 equ     feedback reg0
 equ     dfil reg1
@@ -47,53 +49,55 @@ equ     delaybase reg2
 
 equ     delaylen    24000
 
-rdax        feedback, 0.8   ; read end of long delay
-mulx        pot2            ; scale feedback
-rdax        adcl, 0.8       ; mix input
+rdax    feedback, 0.8   ; read end of long delay
+mulx    pot2            ; scale feedback
+rdax    adcl, 0.8       ; mix input
 wra     delay, 0.0      ; write to long delay
 
-rdax        pot1, 0.8       ; read delay pot
+rdax    pot1, 0.8       ; read delay pot
 sof     0.95, 0.05      ; scale to max min
-rdfx        dfil, 0.0001    ; filter delay time
-wrax        dfil, 0     ; and save
+rdfx    dfil, 0.0001    ; filter delay time
+wrax    dfil, 0     ; and save
 
 or      delay*256       ; put address of delay in acc
-wrax        delaybase, 0    ; save
+wrax    delaybase, 0    ; save
 
 or      delaylen*256    ; put length of delay in acc
-mulx        dfil            ; pick location on delay line
-rdax        delaybase, 1    ; add start address
-wrax        addr_ptr, 0     ; set pointer pos
+mulx    dfil            ; pick location on delay line
+rdax    delaybase, 1    ; add start address
+wrax    addr_ptr, 0     ; set pointer pos
 
-rmpa        1           ; get delay from pointer
-wrax        feedback, 1.0   ; save to long delay
+rmpa    1           ; get delay from pointer
+wrax    feedback, 1.0   ; save to long delay
 
-mulx        pot0            ; scale by mix pot
-rdax        adcl, 1.0       ; add input
-wrax        dacl, 0.0       ; write both channels`,
+mulx    pot0            ; scale by mix pot
+rdax    adcl, 1.0       ; add input
+wrax    dacl, 0.0       ; write both channels`,
 
-        chorus: `; simple mono chorus
-mem chodel  2048
+        chorus: `; Simple Mono Chorus
+; POT0: chorus rate, POT1: chorus intensity, POT2: not used
 
-skp run, start      ; set up LFOs
+mem     chodel  2048
+
+skp     run, start      ; set up LFOs
 wlds    sin0, 12, 100
 
 start:
 
 rdax    adcl, 1.0   ; read input
-wra chodel, 1   ; write to chorus delay
+wra     chodel, 1   ; write to chorus delay
 
 rdax    pot0, 1.0   ; read pot0 for rate
 mulx    pot0        ; make log
-sof 0.3, 0.0    ; scale chorus rate
+sof     0.3, 0.0    ; scale chorus rate
 wrax    sin0_rate, 0    ; set LFO rate
 
 rdax    pot1, 1.0   ; read pot1 for depth
-sof 0.02, 0.004 ; total range from 0.01 to 0.02
+sof     0.02, 0.004 ; total range from 0.01 to 0.02
 wrax    sin0_range, 0   ; set sine range
 
-cho rda, sin0, sin|reg|compc, chodel+800 ; do chorus using sin0 LFO
-cho rda, sin0, sin, chodel+801      ; interpolate using LFO
+cho     rda, sin0, sin|reg|compc, chodel+800 ; do chorus using sin0 LFO
+cho     rda, sin0, sin, chodel+801      ; interpolate using LFO
 
 rdax    adcl, 0.8
 wrax    dacl, 0.8   ; sum chorus and dry
@@ -113,44 +117,52 @@ wrax    dacr, 0.0   ; then write to both outputs`
         }
     }
 
-    function loadExample() {
-      const select = document.getElementById('exampleSelect');
-
-      if (select.value && examples[select.value]) {
-        editor.setValue(examples[select.value]); // use Monaco API
-        // Clear output + UI states
-        document.getElementById('output').value = '';
-        document.getElementById('messages').innerHTML = '';
-        document.getElementById('downloadHexBtn').disabled = true;
-        document.getElementById('downloadBinBtn').disabled = true;
-        assembledData = null;
-        showMessage('Example loaded successfully', 'success');
+      function loadExample() {
+        const select = document.getElementById('exampleSelect');
+        if (select.value && examples[select.value]) {
+          editor.setValue(examples[select.value]);
+          document.getElementById('output').value = '';
+          document.getElementById('messages').innerHTML = '';
+          document.getElementById('downloadHexBtn').disabled = true;
+          document.getElementById('downloadBinBtn').disabled = true;
+          assembledData = null;
+          showMessage('Example loaded successfully', 'success');
+        }
       }
-    }
+
+      function toggleMinimap() {
+  const showMinimap = document.getElementById('minimapToggle')?.checked || false;
+
+  if (editor) {
+    editor.updateOptions({
+      minimap: { enabled: showMinimap }
+    });
+  }
+}
 
 
-    function loadFile() {
-      const fileInput = document.getElementById('fileInput');
-      const file = fileInput.files[0];
+    // function loadFile() {
+    //   const fileInput = document.getElementById('fileInput');
+    //   const file = fileInput.files[0];
 
-      if (!file) return;
+    //   if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        editor.setValue(e.target.result); // load into Monaco
-        document.getElementById('output').value = '';
-        document.getElementById('messages').innerHTML = '';
-        document.getElementById('downloadHexBtn').disabled = true;
-        document.getElementById('downloadBinBtn').disabled = true;
-        assembledData = null;
-        showMessage('File loaded successfully', 'success');
-        document.getElementById('exampleSelect').value = '';
-      };
-      reader.onerror = function() {
-        showMessage('Error reading file', 'error');
-      };
-      reader.readAsText(file);
-    }
+    //   const reader = new FileReader();
+    //     reader.onload = function(e) {
+    //       editor.setValue(e.target.result);
+    //       document.getElementById('output').value = '';
+    //       document.getElementById('messages').innerHTML = '';
+    //       document.getElementById('downloadHexBtn').disabled = true;
+    //       document.getElementById('downloadBinBtn').disabled = true;
+    //       assembledData = null;
+    //       showMessage('File loaded successfully', 'success');
+    //       document.getElementById('exampleSelect').value = '';
+    //     };
+    //   reader.onerror = function() {
+    //     showMessage('Error reading file', 'error');
+    //   };
+    //   reader.readAsText(file);
+    // }
 
 
     // FV-1 Assembler JavaScript Port
@@ -1725,26 +1737,49 @@ wrax    dacr, 0.0   ; then write to both outputs`
         }
     }
 
+    // function loadFile() {
+    //     const fileInput = document.getElementById('fileInput');
+    //     const file = fileInput.files[0];
+
+    //     if (!file) {
+    //         showMessage('Please select a file', 'error');
+    //         return;
+    //     }
+
+    //     const reader = new FileReader();
+    //     reader.onload = function(e) {
+    //         // document.getElementById('sourceCode').value = e.target.result;
+    //         editor.getValue() = e.target.result;
+    //         updateLineNumbers(); // Add this line to update line numbers after loading
+    //         showMessage('File loaded successfully', 'success');
+    //     };
+    //     reader.onerror = function() {
+    //         showMessage('Error reading file', 'error');
+    //     };
+    //     reader.readAsText(file);
+    // }
+
     function loadFile() {
-        const fileInput = document.getElementById('fileInput');
-        const file = fileInput.files[0];
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
 
-        if (!file) {
-            showMessage('Please select a file', 'error');
-            return;
-        }
+      if (!file) return;
 
-        const reader = new FileReader();
+      const reader = new FileReader();
         reader.onload = function(e) {
-            // document.getElementById('sourceCode').value = e.target.result;
-            editor.getValue() = e.target.result;
-            updateLineNumbers(); // Add this line to update line numbers after loading
-            showMessage('File loaded successfully', 'success');
+          editor.setValue(e.target.result);
+          document.getElementById('output').value = '';
+          document.getElementById('messages').innerHTML = '';
+          document.getElementById('downloadHexBtn').disabled = true;
+          document.getElementById('downloadBinBtn').disabled = true;
+          assembledData = null;
+          showMessage('File loaded successfully', 'success');
+          document.getElementById('exampleSelect').value = '';
         };
-        reader.onerror = function() {
-            showMessage('Error reading file', 'error');
-        };
-        reader.readAsText(file);
+      reader.onerror = function() {
+        showMessage('Error reading file', 'error');
+      };
+      reader.readAsText(file);
     }
 
     function assemble() {
