@@ -100,6 +100,31 @@ async function selectOutputDirectory() {
     }
 }
 
+let selectedFilename = null;
+
+function selectFilename(btn) {
+  // Deselect all buttons
+  document.querySelectorAll('.filename-btn').forEach(b => b.classList.remove('selected'));
+
+  // Mark the clicked one as selected
+  btn.classList.add('selected');
+
+  // Store the selected filename
+  selectedFilename = btn.dataset.filename;
+
+  // Update the visible label
+  document.getElementById('filenameLabel').textContent = btn.textContent;
+
+  // Enable download buttons if output directory is selected
+  const outputDirSelected = document.getElementById('outputDirDisplay').textContent !== 'No directory selected';
+  document.getElementById('downloadHexBtn').disabled = !outputDirSelected;
+  document.getElementById('downloadBinBtn').disabled = !outputDirSelected;
+}
+
+
+
+
+
 function assemble() {
     // const source = document.getElementById('sourceCode').value;
     const source = editor.getValue();
@@ -220,7 +245,13 @@ function showMessage(msg, type) {
 
 async function downloadHex() {
     const hex = document.getElementById('output').value;
-    const filename = document.getElementById('filenameSelect').value;
+
+    if (!selectedFilename) {
+        showMessage('Please select a filename first.', 'error');
+        return;
+    }
+
+    const filename = selectedFilename;
 
     if (outputDirectoryHandle && 'showDirectoryPicker' in window) {
         try {
@@ -240,6 +271,7 @@ async function downloadHex() {
         downloadFile(filename, hex, 'text/plain');
     }
 }
+
 
 function downloadBinary() {
     if (!assembledData) return;
