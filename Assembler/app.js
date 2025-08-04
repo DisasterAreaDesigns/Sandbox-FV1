@@ -1871,21 +1871,39 @@ wrax    dacr, 0.0   ; then write to both outputs`
     }
 
     function saveSource() {
-        const source = document.getElementById('sourceCode').value;
-        if (!source.trim()) {
-            showMessage('No source code to save', 'error');
-            return;
-        }
+      const source = editor.getValue();
 
-        const filename = prompt('Enter filename for source code:', 'program.spn');
-        if (filename === null) {
-            return; // User cancelled
-        }
+      if (!source.trim()) {
+        showMessage('Nothing to save', 'error');
+        return;
+      }
 
-        // Ensure .spn extension
-        const finalFilename = filename.endsWith('.spn') ? filename : filename + '.spn';
-        downloadFile(finalFilename, source, 'text/plain');
+      // Create default filename based on date and time
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:T]/g, '-').split('.')[0]; // "2025-08-04-14-37-00"
+      const defaultFilename = `program_${timestamp}.spn`;
+
+      // Prompt user for filename
+      const filename = prompt('Enter filename to save:', defaultFilename);
+
+      if (!filename) {
+        showMessage('Save cancelled', 'info');
+        return;
+      }
+
+      const blob = new Blob([source], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+
+      URL.revokeObjectURL(url);
+      showMessage(`Source saved as ${filename}`, 'success');
     }
+
+
 
     function showMessage(msg, type) {
         const className = type === 'error' ? 'error' : 'success';
