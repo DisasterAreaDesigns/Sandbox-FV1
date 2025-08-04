@@ -12,9 +12,9 @@ Our intention is to create a complete toolchain that can run on any modern compu
 
 ## What Did We Do?
 
-We've been [asfv1](https://github.com/ndf-zz/asfv1), an open-source assembler for FV-1 designed by Nathan Fraser.  It works great but requires a few steps to depoloy as part of a larger toolchain.  It works with Sublime Text or Notepad++ to create a DIY development environmant, but it's still a lot of work for a new user.  So we decided to build a one-stop shop!
+We've been using [asfv1](https://github.com/ndf-zz/asfv1), an open-source assembler for FV-1 designed by Nathan Fraser.  It works great but requires a few steps to depoloy as part of a larger toolchain.  It works with Sublime Text or Notepad++ to create a DIY development environmant, but it's still a lot of work for a new user.  So we decided to build a one-stop shop!
 
-We patched up some bugs we found, added some quality-of-life improvements, and ported the whole thing from Python to JavaScript so we could run it in a browser.  There's a (very) basic text editor, an assembler, and a one-button deployment to the Sandbox hardware.
+We patched up some bugs we found, added some quality-of-life improvements, and ported the whole thing from Python to JavaScript so we could run it in a browser.  There's a pretty decent code editor using Monaco, an assembler, and a one-button deployment to the Sandbox hardware.
 
 The hardware is very simple, incorporating a high-quality analog front-end that reduces out-of-band and clock noise from the FV-1.  It's full stereo, features three user potentiometer controls, and two toggle switches for selecting one of six possible algorithms.  It also uses program zero to bypass the effect, allowing stereo switching without any external hardware or relays, albeit at the cost of higher noise floor and a slight delay from the DSP ADC+DAC conversions.
 
