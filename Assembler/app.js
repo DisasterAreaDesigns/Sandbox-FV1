@@ -1,6 +1,8 @@
     // <script>
     // line numbers
 
+
+
     const textarea = document.getElementById('sourceCode');
     const lineNumbers = document.getElementById('lineNumbers');
 
@@ -112,49 +114,44 @@ wrax    dacr, 0.0   ; then write to both outputs`
     }
 
     function loadExample() {
-        const select = document.getElementById('exampleSelect');
-        const sourceCode = document.getElementById('sourceCode');
+      const select = document.getElementById('exampleSelect');
 
-        if (select.value && examples[select.value]) {
-            sourceCode.value = examples[select.value];
-            updateLineNumbers();
-            // Clear assembly output when loading example
-            document.getElementById('output').value = '';
-            document.getElementById('messages').innerHTML = '';
-            document.getElementById('downloadHexBtn').disabled = true;
-            document.getElementById('downloadBinBtn').disabled = true;
-            assembledData = null;
-            showMessage('Example loaded successfully', 'success');
-        }
+      if (select.value && examples[select.value]) {
+        editor.setValue(examples[select.value]); // use Monaco API
+        // Clear output + UI states
+        document.getElementById('output').value = '';
+        document.getElementById('messages').innerHTML = '';
+        document.getElementById('downloadHexBtn').disabled = true;
+        document.getElementById('downloadBinBtn').disabled = true;
+        assembledData = null;
+        showMessage('Example loaded successfully', 'success');
+      }
     }
+
 
     function loadFile() {
-        const fileInput = document.getElementById('fileInput');
-        const file = fileInput.files[0];
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
 
-        if (!file) {
-            return; // Just return silently if no file
-        }
+      if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('sourceCode').value = e.target.result;
-            updateLineNumbers();
-            // Clear assembly output when loading new file
-            document.getElementById('output').value = '';
-            document.getElementById('messages').innerHTML = '';
-            document.getElementById('downloadHexBtn').disabled = true;
-            document.getElementById('downloadBinBtn').disabled = true;
-            assembledData = null;
-            showMessage('File loaded successfully', 'success');
-            // Reset the example dropdown
-            document.getElementById('exampleSelect').value = '';
-        };
-        reader.onerror = function() {
-            showMessage('Error reading file', 'error');
-        };
-        reader.readAsText(file);
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        editor.setValue(e.target.result); // load into Monaco
+        document.getElementById('output').value = '';
+        document.getElementById('messages').innerHTML = '';
+        document.getElementById('downloadHexBtn').disabled = true;
+        document.getElementById('downloadBinBtn').disabled = true;
+        assembledData = null;
+        showMessage('File loaded successfully', 'success');
+        document.getElementById('exampleSelect').value = '';
+      };
+      reader.onerror = function() {
+        showMessage('Error reading file', 'error');
+      };
+      reader.readAsText(file);
     }
+
 
     // FV-1 Assembler JavaScript Port
     class FV1Assembler {
@@ -1739,7 +1736,8 @@ wrax    dacr, 0.0   ; then write to both outputs`
 
         const reader = new FileReader();
         reader.onload = function(e) {
-            document.getElementById('sourceCode').value = e.target.result;
+            // document.getElementById('sourceCode').value = e.target.result;
+            editor.getValue() = e.target.result;
             updateLineNumbers(); // Add this line to update line numbers after loading
             showMessage('File loaded successfully', 'success');
         };
@@ -1750,7 +1748,8 @@ wrax    dacr, 0.0   ; then write to both outputs`
     }
 
     function assemble() {
-        const source = document.getElementById('sourceCode').value;
+        // const source = document.getElementById('sourceCode').value;
+        const source = editor.getValue();
         const clamp = document.getElementById('clampOption').checked;
         const spinReals = document.getElementById('spinRealsOption').checked;
 

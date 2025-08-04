@@ -32,15 +32,15 @@ textarea {
     border-radius: 4px;
 }
 
-.editor-container {
+/*.editor-container {
     position: relative;
     display: flex;
     border: 1px solid #ddd;
     border-radius: 4px;
     overflow: hidden;
-}
+}*/
 
-.line-numbers {
+/*.line-numbers {
     background-color: #f8f8f8;
     color: #999;
     font-family: 'Courier New', monospace;
@@ -52,16 +52,33 @@ textarea {
     overflow: hidden;
     white-space: pre;
     height: 300px; /* Match textarea height */
-}
+}*/
 
-.editor-container textarea {
+/*.editor-container textarea {
     border: none;
     flex: 1;
     line-height: 1.5;
     font-size: 14px;
     padding: 10px;
     margin: 0;
+}*/
+
+/* Ensure the editor container takes full width and auto-height */
+.editor-container {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  position: relative;
 }
+
+/* Monaco injects styles but we help ensure visibility */
+#editor {
+  width: 100% !important;
+  height: 400px !important; /* or auto-resize later */
+  border: 1px solid #ccc;
+  font-family: monospace;
+}
+
 
 button {
     background-color: #4CAF50;

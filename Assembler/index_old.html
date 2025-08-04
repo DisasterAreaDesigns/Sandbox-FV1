@@ -8,110 +8,9 @@
 </head>
 <body>
     <div class="container">
-        <h1>FV-1 DSP Assembler build 08</h1>
-
-        <h2>Input Source Code</h2>
-            <div class="file-input">
-                <input type="file" id="fileInput" accept=".asm,.txt,.spn" onchange="loadFile()">
-                <select id="exampleSelect" onchange="loadExample()">
-                    <option value="">Select an example program...</option>
-                    <option value="passthrough">Simple Pass-through</option>
-                    <option value="delay">Simple Delay</option>
-                    <option value="chorus">Simple Chorus</option>
-                </select>
-            </div>
-
-        <div class="editor-container">
-    <div id="editor" style="width: 100%; height: 400px;"></div>
-  </div>
-
-  <!-- Monaco Editor Loader -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-  <script>
-    let editor; // global editor instance
-    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' }});
-    require(['vs/editor/editor.main'], function () {
-      // Register the SpinFV1 language
-      monaco.languages.register({ id: 'spin' });
-
-      monaco.languages.setMonarchTokensProvider('spin', {
-        ignoreCase: true, // enables case-insensitive matching for all rules
-        tokenizer: {
-          root: [
-            // Comments
-            [/%?;.*/, 'comment'],
-
-            // Labels
-            [/[a-zA-Z][\w]*:/, 'label'],
-
-            // Keywords — now using string regex, not RegExp
-            ['\\b(?:RDA|RMPA|WRA|WRAP|RDAX|RDFX|WRAX|WRHX|WRLX|MAXX|ABSA|MULX|LOG|EXP|SKP|RUN|ZRC|ZRO|GEZ|NEG|LDAX|CHO|JAM|WLDR|WLDS|SIN|REG|SIN0|SIN1|COS|COS0|COS1|COMPA|COMPC|RPTR2|NA|RMP0|RMP1|SOF|AND|OR|XOR|NOT|NOP|CLR|EQU|MEM|POT0|POT1|POT2|ADCL|ADCR|DACL|DACR|REG[0-9]|REG1[0-9]|REG2[0-9]|REG3[0-1])\\b', 'keyword'],
-
-            // Hex
-            ['\\b0[xX][0-9A-Fa-f]+\\b', 'number.hex'],
-
-            // Decimal
-            ['\\b\\d+(\\.\\d+)?\\b', 'number'],
-
-            // Strings
-            ['"', { token: 'string.quote', next: '@string' }]
-          ],
-
-          string: [
-            [/[^"]+/, 'string'],
-            ['"', { token: 'string.quote', next: '@pop' }]
-          ]
-        }
-      });
-
-      monaco.editor.defineTheme('spinTheme', {
-        base: 'vs', // or 'vs-dark'
-        inherit: true,
-        rules: [
-          { token: 'keyword', foreground: 'aa00ff', fontStyle: 'bold' },
-          { token: 'comment', foreground: '008000', fontStyle: 'italic' },
-          { token: 'label', foreground: '0000ff' },
-          { token: 'number', foreground: 'ff0000' },
-          { token: 'number.hex', foreground: 'ff6600' },
-          { token: 'string', foreground: 'a31515' }
-        ],
-        colors: {
-          'editor.foreground': '#000000',
-          'editor.background': '#ffffff',
-          'editorLineNumber.foreground': '#999999',
-          'editorCursor.foreground': '#000000',
-          'editor.selectionBackground': '#BAD6FD',
-          'editor.lineHighlightBackground': '#f0f8ff'
-        }
-      });
-
-
-
-
-      // Create the Monaco Editor
-      var editor = monaco.editor.create(document.getElementById('editor'), {
-        language: 'spin',
-        theme: 'spinTheme',
-        automaticLayout: true,
-        quickSuggestions: false,
-        wordBasedSuggestions: false,
-        minimap: { enabled: false }
-      });
-
-      // Disable browser autocorrect on Monaco's hidden textarea
-      setTimeout(() => {
-        const textAreas = document.querySelectorAll('textarea');
-        textAreas.forEach(textArea => {
-          textArea.setAttribute('spellcheck', 'false');
-          textArea.setAttribute('autocorrect', 'off');
-          textArea.setAttribute('autocomplete', 'off');
-          textArea.setAttribute('autocapitalize', 'off');
-        });
-      }, 500);
-    });
-  </script>
+        <h1>FV-1 DSP Assembler build 07</h1>
         
-<!--         <div class="input-section">
+        <div class="input-section">
             <h2>Input Source Code</h2>
             <div class="file-input">
                 <input type="file" id="fileInput" accept=".asm,.txt,.spn" onchange="loadFile()">
@@ -135,7 +34,7 @@
                     <input type="checkbox" id="spinRealsOption"> SpinASM reals (2 → 2.0, 1 → 1.0)
                 </label>
             </div>
-        </div> -->
+        </div>
         
         <div>
             <button onclick="assemble()">Assemble</button>
