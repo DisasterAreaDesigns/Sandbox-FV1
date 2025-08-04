@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,145 +8,188 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="favicon.ico">
 </head>
+
 <body>
     <div class="container">
 
         <!-- Monaco Editor Loader -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-  <script>
-    let editor; // global editor instance
-    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' }});
-    require(['vs/editor/editor.main'], function () {
-      // Register the SpinFV1 language
-      monaco.languages.register({ id: 'spin' });
-
-      monaco.languages.setMonarchTokensProvider('spin', {
-        ignoreCase: true, // enables case-insensitive matching for all rules
-        tokenizer: {
-          root: [
-            // Comments
-            [/%?;.*/, 'comment'],
-
-            // Labels
-            [/[a-zA-Z][\w]*:/, 'label'],
-
-            // Keywords — now using string regex, not RegExp
-            ['\\b(?:RDA|RMPA|WRA|WRAP|RDAX|RDFX|WRAX|WRHX|WRLX|MAXX|ABSA|MULX|LOG|EXP|SKP|RUN|ZRC|ZRO|GEZ|NEG|LDAX|CHO|JAM|WLDR|WLDS|SIN|REG|SIN0|SIN1|COS|COS0|COS1|COMPA|COMPC|RPTR2|NA|RMP0|RMP1|SOF|AND|OR|XOR|NOT|NOP|CLR|EQU|MEM|POT0|POT1|POT2|ADCL|ADCR|DACL|DACR|REG[0-9]|REG1[0-9]|REG2[0-9]|REG3[0-1])\\b', 'keyword'],
-
-            // Hex
-            ['\\b0[xX][0-9A-Fa-f]+\\b', 'number.hex'],
-
-            // Decimal
-            ['\\b\\d+(\\.\\d+)?\\b', 'number'],
-
-            // Strings
-            ['"', { token: 'string.quote', next: '@string' }]
-          ],
-
-          string: [
-            [/[^"]+/, 'string'],
-            ['"', { token: 'string.quote', next: '@pop' }]
-          ]
-        }
-      });
-
-      monaco.editor.defineTheme('spinTheme', {
-        base: 'vs', // or 'vs-dark'
-        inherit: true,
-        rules: [
-          { token: 'keyword', foreground: 'aa00ff', fontStyle: 'bold' },
-          { token: 'comment', foreground: '008000', fontStyle: 'italic' },
-          { token: 'label', foreground: '0000ff' },
-          { token: 'number', foreground: 'ff0000' },
-          { token: 'number.hex', foreground: 'ff6600' },
-          { token: 'string', foreground: 'a31515' }
-        ],
-        colors: {
-          'editor.foreground': '#000000',
-          'editor.background': '#ffffff',
-          'editorLineNumber.foreground': '#999999',
-          'editorCursor.foreground': '#000000',
-          'editor.selectionBackground': '#BAD6FD',
-          'editor.lineHighlightBackground': '#f0f8ff'
-        }
-      });
-
-
-
-
-      // Create the Monaco Editor
-      editor = monaco.editor.create(document.getElementById('editor'), {
-        language: 'spin',
-        theme: 'spinTheme',
-        automaticLayout: true,
-        quickSuggestions: false,
-        wordBasedSuggestions: false,
-        minimap: { enabled: false }
-      });
-
-      // Disable browser autocorrect on Monaco's hidden textarea
-      setTimeout(() => {
-        const textAreas = document.querySelectorAll('textarea');
-        textAreas.forEach(textArea => {
-          textArea.setAttribute('spellcheck', 'false');
-          textArea.setAttribute('autocorrect', 'off');
-          textArea.setAttribute('autocomplete', 'off');
-          textArea.setAttribute('autocapitalize', 'off');
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+        <script>
+        let editor; // global editor instance
+        require.config({
+            paths: {
+                'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'
+            }
         });
-      }, 500);
-    });
-  </script>
+        require(['vs/editor/editor.main'], function() {
+            // Register the SpinFV1 language
+            monaco.languages.register({
+                id: 'spin'
+            });
+
+            monaco.languages.setMonarchTokensProvider('spin', {
+                ignoreCase: true, // enables case-insensitive matching for all rules
+                tokenizer: {
+                    root: [
+                        // Comments
+                        [/%?;.*/, 'comment'],
+
+                        // Labels
+                        [/[a-zA-Z][\w]*:/, 'label'],
+
+                        // Keywords — now using string regex, not RegExp
+                        ['\\b(?:RDA|RMPA|WRA|WRAP|RDAX|RDFX|WRAX|WRHX|WRLX|MAXX|ABSA|MULX|LOG|EXP|SKP|RUN|ZRC|ZRO|GEZ|NEG|LDAX|CHO|JAM|WLDR|WLDS|SIN|REG|SIN0|SIN1|COS|COS0|COS1|COMPA|COMPC|RPTR2|NA|RMP0|RMP1|SOF|AND|OR|XOR|NOT|NOP|CLR|EQU|MEM|POT0|POT1|POT2|ADCL|ADCR|DACL|DACR|REG[0-9]|REG1[0-9]|REG2[0-9]|REG3[0-1])\\b', 'keyword'],
+
+                        // Hex
+                        ['\\b0[xX][0-9A-Fa-f]+\\b', 'number.hex'],
+
+                        // Decimal
+                        ['\\b\\d+(\\.\\d+)?\\b', 'number'],
+
+                        // Strings
+                        ['"', {
+                            token: 'string.quote',
+                            next: '@string'
+                        }]
+                    ],
+
+                    string: [
+                        [/[^"]+/, 'string'],
+                        ['"', {
+                            token: 'string.quote',
+                            next: '@pop'
+                        }]
+                    ]
+                }
+            });
+
+            monaco.editor.defineTheme('spinTheme', {
+                base: 'vs', // or 'vs-dark'
+                inherit: true,
+                rules: [{
+                        token: 'keyword',
+                        foreground: 'aa00ff',
+                        fontStyle: 'bold'
+                    },
+                    {
+                        token: 'comment',
+                        foreground: '008000',
+                        fontStyle: 'italic'
+                    },
+                    {
+                        token: 'label',
+                        foreground: '0000ff'
+                    },
+                    {
+                        token: 'number',
+                        foreground: 'ff0000'
+                    },
+                    {
+                        token: 'number.hex',
+                        foreground: 'ff6600'
+                    },
+                    {
+                        token: 'string',
+                        foreground: 'a31515'
+                    }
+                ],
+                colors: {
+                    'editor.foreground': '#000000',
+                    'editor.background': '#ffffff',
+                    'editorLineNumber.foreground': '#999999',
+                    'editorCursor.foreground': '#000000',
+                    'editor.selectionBackground': '#BAD6FD',
+                    'editor.lineHighlightBackground': '#f0f8ff'
+                }
+            });
+
+
+
+
+            // Create the Monaco Editor
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                language: 'spin',
+                theme: 'spinTheme',
+                automaticLayout: true,
+                quickSuggestions: false,
+                wordBasedSuggestions: false,
+                minimap: {
+                    enabled: false
+                }
+            });
+
+            // Disable browser autocorrect on Monaco's hidden textarea
+            setTimeout(() => {
+                const textAreas = document.querySelectorAll('textarea');
+                textAreas.forEach(textArea => {
+                    textArea.setAttribute('spellcheck', 'false');
+                    textArea.setAttribute('autocorrect', 'off');
+                    textArea.setAttribute('autocomplete', 'off');
+                    textArea.setAttribute('autocapitalize', 'off');
+                });
+            }, 500);
+        });
+        </script>
 
         <div class="header-bar">
-          <h1>DSP Sandbox Editor <span class="build">(build 09)</span></h1>
-          <img src="icon.png" alt="App Icon" class="app-icon">
+            <h1>DSP Sandbox Editor <span class="build">(build 09)</span></h1>
+            <img src="icon.png" alt="App Icon" class="app-icon">
         </div>
 
 
         <h2>Input Source Code</h2>
-            <div class="file-input">
-                <input type="file" id="fileInput" accept=".asm,.txt,.spn" onchange="loadFile()">
-                <select id="exampleSelect" onchange="loadExample()">
-                    <option value="">Select an example program...</option>
-                    <option value="passthrough">Simple Pass-through</option>
-                    <option value="delay">Simple Delay</option>
-                    <option value="chorus">Simple Chorus</option>
-                </select>
+        <div class="file-input">
+            <input type="file" id="fileInput" accept=".asm,.txt,.spn" style="display: none;" onchange="loadFile()">
+            <button onclick="document.getElementById('fileInput').click()">Load File...</button>
+
+            <div class="example-buttons">
+                <span>Or select an example program:</span>
+                <div class="button-grid">
+                    <button onclick="loadExample('passthrough')">Simple Pass-through</button>
+                    <button onclick="loadExample('delay')">Simple Delay</button>
+                    <button onclick="loadExample('chorus')">Simple Chorus</button>
+<!--                     <button onclick="loadExample('flanger')">Simple Flanger</button>
+                    <button onclick="loadExample('reverb')">Simple Reverb</button>
+                    <button onclick="loadExample('tremolo')">Simple Tremolo</button> -->
+                </div>
             </div>
+        </div>
+
+
 
         <div class="editor-container">
-    <div id="editor" style="width: 100%; height: 400px;"></div>
-  </div>
+            <div id="editor" style="width: 100%; height: 400px;"></div>
+        </div>
         <div class="editor-help-text">
-        <label>
-          <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
-          <span class="shortcut">Ctrl+F / Cmd+F Find</span>
-          <span class="shortcut">Ctrl+H / Cmd+H Replace</span>
-          <span class="shortcut">F3 Find Next</span>
-        </label>
+            <label>
+                <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
+                <span class="shortcut">Ctrl+F / Cmd+F Find</span>
+                <span class="shortcut">Ctrl+H / Cmd+H Replace</span>
+                <span class="shortcut">F3 Find Next</span>
+            </label>
 
         </div>
-              <div class="options">
-                <label>
-                    <input type="checkbox" id="clampOption"> Clamp out-of-range values
-                </label>
-                <label>
-                    <input type="checkbox" id="spinRealsOption"> Use '1' and '2' as 1.0 and 2.0 (compatibility mode)
-                </label>
-                <label>
-                    <input type="checkbox" id="minimapToggle" onchange="toggleMinimap()"> Show editor mini-map
-                </label>
-            </div>
+        <div class="options">
+            <label>
+                <input type="checkbox" id="clampOption"> Clamp out-of-range values
+            </label>
+            <label>
+                <input type="checkbox" id="spinRealsOption"> Use '1' and '2' as 1.0 and 2.0 (compatibility mode)
+            </label>
+            <label>
+                <input type="checkbox" id="minimapToggle" onchange="toggleMinimap()"> Show editor mini-map
+            </label>
+        </div>
 
-    
+
         <div>
             <button onclick="assemble()">Assemble</button>
             <button onclick="clearAssembly()">Clear Assembly</button>
             <button onclick="saveSource()">Save Source...</button>
         </div>
-        
+
         <div id="messages"></div>
-        
+
         <div class="output-section">
             <h2>Output</h2>
             <div class="output-controls">
@@ -180,28 +224,29 @@
                 </div>
             </div>
         </div>
-    
-    <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #666; line-height: 1.4;">
-        <p><strong>MIT License</strong></p>
-        <p>Uses portions of asfv1 by Nathan Fraser, <a href="https://github.com/ndf-zz/asfv1" style="color: #666;">https://github.com/ndf-zz/asfv1</a><br>
-        Copyright (c) 2017-2021 Nathan Fraser</p>
-        <p>Permission is hereby granted, free of charge, to any person obtaining a copy
-        of this software and associated documentation files (the "Software"), to deal
-        in the Software without restriction, including without limitation the rights
-        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-        copies of the Software, and to permit persons to whom the Software is
-        furnished to do so, subject to the following conditions:</p>
-        <p>The above copyright notice and this permission notice shall be included in all
-        copies or substantial portions of the Software.</p>
-        <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-        SOFTWARE.</p>
-    </footer>
-    
-    <script src="app.js"></script>
+
+        <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #666; line-height: 1.4;">
+            <p><strong>MIT License</strong></p>
+            <p>Uses portions of asfv1 by Nathan Fraser, <a href="https://github.com/ndf-zz/asfv1" style="color: #666;">https://github.com/ndf-zz/asfv1</a><br>
+                Copyright (c) 2017-2021 Nathan Fraser</p>
+            <p>Permission is hereby granted, free of charge, to any person obtaining a copy
+                of this software and associated documentation files (the "Software"), to deal
+                in the Software without restriction, including without limitation the rights
+                to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+                copies of the Software, and to permit persons to whom the Software is
+                furnished to do so, subject to the following conditions:</p>
+            <p>The above copyright notice and this permission notice shall be included in all
+                copies or substantial portions of the Software.</p>
+            <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+                IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+                FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+                AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+                OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+                SOFTWARE.</p>
+        </footer>
+
+        <script src="app.js"></script>
 </body>
+
 </html>
