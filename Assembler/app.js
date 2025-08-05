@@ -328,6 +328,8 @@ function toggleOutput() {
 function loadExample(exampleName) {
     if (exampleName && examples[exampleName]) {
         editor.setValue(examples[exampleName]);
+        editor.setScrollTop(0);
+        editor.setScrollLeft(0);
         document.getElementById('output').value = '';
         document.getElementById('messages').innerHTML = '';
         document.getElementById('downloadHexBtn').disabled = true;
@@ -347,6 +349,8 @@ function loadFile() {
     const reader = new FileReader();
     reader.onload = function(e) {
         editor.setValue(e.target.result);
+        editor.setScrollTop(0);
+        editor.setScrollLeft(0);
         document.getElementById('output').value = '';
         document.getElementById('messages').innerHTML = '';
         document.getElementById('downloadHexBtn').disabled = true;
