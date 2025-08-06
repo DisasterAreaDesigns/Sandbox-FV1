@@ -27,3 +27,8 @@ So it's a web app and a pedal.  Hook 'em up and write some code!
 * **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler
 * **Hardware**  Schematic and PCB files for Sandbox pedal hardware
 
+## What Can I Do With All This?
+We've released this project and all associated tools under the [MIT License.](https://www.tldrlegal.com/license/mit-license)  This means that you can use the tools and information in this repository for anything you want, as long as you inform your users / customers / clients that you got it from us.  You can modify or change anything here to suit your purposes, and you can make products that you sell for profit.  You can even close your sources, so that what's in your product or project is private.  You just have to credit us as shown in our [license file.](https://github.com/DisasterAreaDesigns/Sandbox-FV1/blob/main/LICENSE)  An example of what that looks like can be found in our [Third Party Notices](https://github.com/DisasterAreaDesigns/Sandbox-FV1/blob/main/ThirdPartyNotices.txt) file.
+
+Any projects you create with these tools belong to you.  If you write your own code to process audio with this project, that code is under your copyright and is yours to do with what you wish.  If you use someone else's DSP algorithms, that use will be subject to *their* license terms, and we're not able to help you sort that out.  TL:DR you can do whatever you want with this repo, just give us credit. 
+
