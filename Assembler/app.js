@@ -21,22 +21,22 @@ async function selectOutputDirectory() {
 let selectedFilename = null;
 
 function selectFilename(btn) {
-  // Deselect all buttons
-  document.querySelectorAll('.filename-btn').forEach(b => b.classList.remove('selected'));
+    // Deselect all buttons
+    document.querySelectorAll('.filename-btn').forEach(b => b.classList.remove('selected'));
 
-  // Mark the clicked one as selected
-  btn.classList.add('selected');
+    // Mark the clicked one as selected
+    btn.classList.add('selected');
 
-  // Store the selected filename
-  selectedFilename = btn.dataset.filename;
+    // Store the selected filename
+    selectedFilename = btn.dataset.filename;
 
-  // Update the visible label
-  document.getElementById('filenameLabel').textContent = btn.textContent;
+    // Update the visible label
+    document.getElementById('filenameLabel').textContent = btn.textContent;
 
-  // Enable download buttons if output directory is selected
-  const outputDirSelected = document.getElementById('outputDirDisplay').textContent !== 'No directory selected';
-  document.getElementById('downloadHexBtn').disabled = !outputDirSelected;
-  document.getElementById('downloadBinBtn').disabled = !outputDirSelected;
+    // Enable download buttons if output directory is selected
+    const outputDirSelected = document.getElementById('outputDirDisplay').textContent !== 'No directory selected';
+    document.getElementById('downloadHexBtn').disabled = !outputDirSelected;
+    document.getElementById('downloadBinBtn').disabled = !outputDirSelected;
 }
 
 function assemble() {
@@ -129,7 +129,7 @@ async function handleFileLoad() {
             'Unsaved Changes',
             'You have unsaved changes in the editor. What would you like to do before loading a new file?'
         );
-        
+
         if (choice === 'cancel') {
             return; // User cancelled
         } else if (choice === 'save') {
@@ -140,7 +140,7 @@ async function handleFileLoad() {
         }
         // If choice === 'discard', proceed with file selection
     }
-    
+
     // Trigger file selection
     document.getElementById('fileInput').click();
 }
@@ -152,7 +152,7 @@ async function clearEditor() {
             'Unsaved Changes',
             'You have unsaved changes in the editor. What would you like to do before clearing?'
         );
-        
+
         if (choice === 'cancel') {
             return; // User cancelled
         } else if (choice === 'save') {
@@ -177,15 +177,15 @@ function showConfirmDialog(title, message) {
         document.getElementById('confirmTitle').textContent = title;
         document.getElementById('confirmMessage').textContent = message;
         document.getElementById('confirmModal').style.display = 'block';
-        
+
         // Store the resolve function for this specific dialog
         const currentResolve = resolve;
-        
+
         document.getElementById('confirmOkBtn').onclick = () => {
             closeModal('confirmModal');
             currentResolve(true);
         };
-        
+
         // Override the modal resolve for cancel
         modalResolve = () => currentResolve(false);
     });
@@ -196,25 +196,25 @@ function showThreeChoiceDialog(title, message) {
         document.getElementById('threeChoiceTitle').textContent = title;
         document.getElementById('threeChoiceMessage').textContent = message;
         document.getElementById('threeChoiceModal').style.display = 'block';
-        
+
         // Store the resolve function for this specific dialog
         const currentResolve = resolve;
-        
+
         document.getElementById('threeChoiceCancelBtn').onclick = () => {
             closeModal('threeChoiceModal');
             currentResolve('cancel');
         };
-        
+
         document.getElementById('threeChoiceDiscardBtn').onclick = () => {
             closeModal('threeChoiceModal');
             currentResolve('discard');
         };
-        
+
         document.getElementById('threeChoiceSaveBtn').onclick = () => {
             closeModal('threeChoiceModal');
             currentResolve('save');
         };
-        
+
         // Override the modal resolve for clicking outside
         modalResolve = () => currentResolve('cancel');
     });
@@ -228,26 +228,26 @@ function showInputDialog(title, label, placeholder = '', defaultValue = '') {
         input.placeholder = placeholder;
         input.value = defaultValue;
         document.getElementById('inputModal').style.display = 'block';
-        
+
         // Store the resolve function for this specific dialog
         const currentResolve = resolve;
-        
+
         // Focus the input
         setTimeout(() => input.focus(), 100);
-        
+
         document.getElementById('inputOkBtn').onclick = () => {
             const value = input.value.trim();
             closeModal('inputModal');
             currentResolve(value || null);
         };
-        
+
         // Handle Enter key
         input.onkeydown = (e) => {
             if (e.key === 'Enter') {
                 document.getElementById('inputOkBtn').click();
             }
         };
-        
+
         // Override the modal resolve for cancel
         modalResolve = () => currentResolve(null);
     });
@@ -260,13 +260,13 @@ function closeModal(modalId) {
 
 function toggleDarkMode() {
     const darkModeEnabled = document.getElementById('darkModeToggle').checked;
-    
+
     // Toggle Monaco editor theme
     if (editor) {
         const theme = darkModeEnabled ? 'spinDark' : 'spinTheme';
         monaco.editor.setTheme(theme);
     }
-    
+
     // Toggle body class for page theme
     document.body.classList.toggle('dark-mode', darkModeEnabled);
 }
@@ -275,9 +275,9 @@ function toggleEditorHeight() {
     if (editor) {
         const editorContainer = editor.getDomNode().parentElement;
         if (editorContainer) {
-            editorContainer.style.height = document.getElementById('editorHeightToggle').checked
-                ? '800px'
-                : '400px';
+            editorContainer.style.height = document.getElementById('editorHeightToggle').checked ?
+                '800px' :
+                '400px';
             editor.layout();
         }
     }
@@ -377,7 +377,7 @@ async function loadExample(exampleName) {
             'Unsaved Changes',
             'You have unsaved changes in the editor. What would you like to do before loading an example?'
         );
-        
+
         if (choice === 'cancel') {
             return; // User cancelled
         } else if (choice === 'save') {
@@ -429,7 +429,7 @@ async function loadFile() {
 
 async function saveSource() {
     if (!editor) return false;
-    
+
     if (!hasEditorContent()) {
         await showConfirmDialog('Save Source', 'There is no content to save.');
         return false;
@@ -441,11 +441,13 @@ async function saveSource() {
         'Enter filename (e.g., my_program.spn)',
         'fv1_source.spn'
     );
-    
+
     if (!filename) return false; // User cancelled
-    
+
     const sourceCode = editor.getValue();
-    const blob = new Blob([sourceCode], { type: 'text/plain' });
+    const blob = new Blob([sourceCode], {
+        type: 'text/plain'
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -454,7 +456,7 @@ async function saveSource() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     return true; // Save completed successfully
 }
 
@@ -473,7 +475,7 @@ function toggleMinimap() {
 function applySystemDarkMode() {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const darkModeToggle = document.getElementById('darkModeToggle');
-    
+
     if (darkModeToggle && editor) {
         darkModeToggle.checked = prefersDark;
         const theme = prefersDark ? 'spinDark' : 'spinTheme';
@@ -515,7 +517,7 @@ window.addEventListener('beforeunload', function(e) {
 document.addEventListener('DOMContentLoaded', function() {
     // Add event listener for file input change
     document.getElementById('fileInput').addEventListener('change', loadFile);
-    
+
     // Add hidden checkboxes that the assembler expects
     const hiddenCheckboxes = document.createElement('div');
     hiddenCheckboxes.style.display = 'none';
