@@ -363,3 +363,126 @@ button:disabled {
             margin-bottom: 10px;
             font-weight: bold;
         }
+
+        /* Dark mode styles */
+body.dark-mode {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .container {
+    background-color: #2a2a2a;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .header-bar .build {
+    color: #999;
+}
+
+body.dark-mode textarea {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border-color: #444;
+}
+
+body.dark-mode #output {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+}
+
+body.dark-mode .options,
+body.dark-mode .output-controls {
+    background-color: #333;
+}
+
+body.dark-mode .editor-help-text {
+    color: #aaa;
+}
+
+body.dark-mode button {
+    background-color: #0d7377;
+    border: 1px solid #0a5d61;
+}
+
+body.dark-mode button:hover {
+    background-color: #14a1a6;
+}
+
+body.dark-mode button:disabled {
+    background-color: #444;
+    border-color: #333;
+}
+
+body.dark-mode .filename-btn {
+    background-color: #444;
+    color: #999;
+}
+
+body.dark-mode .filename-btn.selected {
+    background-color: #0d7377;
+    color: white;
+}
+
+body.dark-mode .editor-container {
+    border-color: #444;
+}
+
+body.dark-mode footer {
+    border-top-color: #444;
+    color: #999;
+}
+
+body.dark-mode footer a {
+    color: #14a1a6;
+}
+
+/* Modal dark mode */
+body.dark-mode .modal-content {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .modal-content h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .modal input[type="text"],
+body.dark-mode .modal textarea {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border-color: #444;
+}
+
+/* Modal button colors in dark mode */
+body.dark-mode .btn-primary {
+    background-color: #0d7377;
+    border: 1px solid #0a5d61;
+}
+
+body.dark-mode .btn-primary:hover {
+    background-color: #14a1a6;
+}
+
+body.dark-mode .btn-secondary {
+    background-color: #555;
+    border: 1px solid #444;
+}
+
+body.dark-mode .btn-secondary:hover {
+    background-color: #666;
+}
+
+body.dark-mode .btn-danger {
+    background-color: #aa3333;
+    border: 1px solid #882222;
+}
+
+body.dark-mode .btn-danger:hover {
+    background-color: #cc4444;
+}

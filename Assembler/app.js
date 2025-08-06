@@ -259,11 +259,16 @@ function closeModal(modalId) {
 }
 
 function toggleDarkMode() {
+    const darkModeEnabled = document.getElementById('darkModeToggle').checked;
+    
+    // Toggle Monaco editor theme
     if (editor) {
-        const darkModeEnabled = document.getElementById('darkModeToggle').checked;
         const theme = darkModeEnabled ? 'spinDark' : 'spinTheme';
         monaco.editor.setTheme(theme);
     }
+    
+    // Toggle body class for page theme
+    document.body.classList.toggle('dark-mode', darkModeEnabled);
 }
 
 function toggleEditorHeight() {
@@ -463,6 +468,29 @@ function toggleMinimap() {
         });
     }
 }
+
+// Add this function to detect and apply system dark mode preference
+function applySystemDarkMode() {
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    
+    if (darkModeToggle && editor) {
+        darkModeToggle.checked = prefersDark;
+        const theme = prefersDark ? 'spinDark' : 'spinTheme';
+        monaco.editor.setTheme(theme);
+    }
+}
+
+// Add listener for system dark mode changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    if (darkModeToggle && editor) {
+        darkModeToggle.checked = e.matches;
+        const theme = e.matches ? 'spinDark' : 'spinTheme';
+        monaco.editor.setTheme(theme);
+        document.body.classList.toggle('dark-mode', e.matches);
+    }
+});
 
 // Close modal when clicking outside and add beforeunload handler
 window.onclick = function(event) {

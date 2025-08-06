@@ -214,6 +214,19 @@
                 }
             });
 
+            // Apply system dark mode preference after editor is created
+            setTimeout(() => {
+                const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const darkModeToggle = document.getElementById('darkModeToggle');
+                
+                if (darkModeToggle) {
+                    darkModeToggle.checked = prefersDark;
+                    const theme = prefersDark ? 'spinDark' : 'spinTheme';
+                    monaco.editor.setTheme(theme);
+                    document.body.classList.toggle('dark-mode', prefersDark);
+                }
+            }, 100);
+
             // Disable browser autocorrect on Monaco's hidden textarea
             setTimeout(() => {
                 const textAreas = document.querySelectorAll('textarea');
