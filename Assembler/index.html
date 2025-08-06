@@ -27,41 +27,99 @@
                 id: 'spin'
             });
 
-            monaco.languages.setMonarchTokensProvider('spin', {
-                ignoreCase: true, // enables case-insensitive matching for all rules
+ monaco.languages.setMonarchTokensProvider('spin', {
+                ignoreCase: true,
                 tokenizer: {
                     root: [
-                        // Comments
-                        [/%?;.*/, 'comment'],
+                        // Line Comments
+                        [/;.*/, 'comment'],
+                        [/%.*/, 'comment'],
 
-                        // Labels
-                        [/[a-zA-Z][\w]*:/, 'label'],
+                        // Strings → enter string mode
+                        ['"', { token: 'string.quote', next: '@string' }],
 
-                        // Keywords — now using string regex, not RegExp
-                        ['\\b(?:RDA|RMPA|WRA|WRAP|RDAX|RDFX|WRAX|WRHX|WRLX|MAXX|ABSA|MULX|LOG|EXP|SKP|RUN|ZRC|ZRO|GEZ|NEG|LDAX|CHO|JAM|WLDR|WLDS|SIN|REG|SIN0|SIN1|COS|COS0|COS1|COMPA|COMPC|RPTR2|NA|RMP0|RMP1|SOF|AND|OR|XOR|NOT|NOP|CLR|EQU|MEM|POT0|POT1|POT2|ADCL|ADCR|DACL|DACR|REG[0-9]|REG1[0-9]|REG2[0-9]|REG3[0-1])\\b', 'keyword'],
+                        // Labels at start of line (must come early)
+                        [/^\s*([a-zA-Z_][\w]*):/, 'label'],
 
-                        // Hex
-                        ['\\b0[xX][0-9A-Fa-f]+\\b', 'number.hex'],
+                        // Declarations
+                        [/\b(equ|mem)\b/, 'keyword.declaration'],
 
-                        // Decimal
-                        ['\\b\\d+(\\.\\d+)?\\b', 'number'],
+                        // Instructions - organized by category
+                        [/\b(rda|rmpa|wra|wrap)\b/, 'keyword'],
+                        [/\b(rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx)\b/, 'keyword'],
+                        [/\b(log|exp|sof|and|or|xor|not|clr)\b/, 'keyword'],
+                        [/\b(skp|jmp|nop)\b/, 'keyword'],
+                        [/\b(wlds|wldr|jam|cho)\b/, 'keyword'],
 
-                        // Strings
-                        ['"', {
-                            token: 'string.quote',
-                            next: '@string'
-                        }]
+                        // CHO sub-types and LFO names
+                        [/\b(sin0|sin1|cos0|cos1|rmp0|rmp1)\b/, 'constant'],
+                        [/\b(sin|cos|reg|compa|compc|rptr2|na)\b/, 'constant'],
+                        [/\b(run|zrc|zro|gez|neg)\b/, 'constant'],
+
+                        // Registers - specific patterns to avoid partial matches
+                        [/\breg([0-9]|[12][0-9]|3[01])\b/, 'variable'],
+                        [/\b(sin0_rate|sin0_range|sin1_rate|sin1_range)\b/, 'variable'],
+                        [/\b(rmp0_rate|rmp0_range|rmp1_rate|rmp1_range)\b/, 'variable'],
+                        [/\b(pot[0-2]|adcl|adcr|dacl|dacr|addr_ptr)\b/, 'variable'],
+
+                        // Hex Numbers
+                        [/\b0[xX][0-9A-Fa-f]+\b/, 'number.hex'],
+                        [/\$[0-9A-Fa-f]+\b/, 'number.hex'],
+
+                        // Binary Numbers  
+                        [/\b0[bB][01]+\b/, 'number.hex'],
+                        [/%[01]+\b/, 'number.hex'],
+
+                        // Decimal Numbers
+                        [/\b\d+(\.\d+)?\b/, 'number'],
+
+                        // Identifiers
+                        [/\b[a-zA-Z_][\w]*\b/, 'identifier'],
                     ],
 
+                    // String mode → everything inside quotes
                     string: [
                         [/[^"]+/, 'string'],
-                        ['"', {
-                            token: 'string.quote',
-                            next: '@pop'
-                        }]
+                        ['"', { token: 'string.quote', next: '@pop' }]
                     ]
                 }
             });
+            
+            // monaco.languages.setMonarchTokensProvider('spin', {
+            //     ignoreCase: true, // enables case-insensitive matching for all rules
+            //     tokenizer: {
+            //         root: [
+            //             // Comments
+            //             [/%?;.*/, 'comment'],
+
+            //             // Labels
+            //             [/[a-zA-Z][\w]*:/, 'label'],
+
+            //             // Keywords — now using string regex, not RegExp
+            //             ['\\b(?:RDA|RMPA|WRA|WRAP|RDAX|RDFX|WRAX|WRHX|WRLX|MAXX|ABSA|MULX|LOG|EXP|SKP|RUN|ZRC|ZRO|GEZ|NEG|LDAX|CHO|JAM|WLDR|WLDS|SIN|REG|SIN0|SIN1|COS|COS0|COS1|COMPA|COMPC|RPTR2|NA|RMP0|RMP1|SOF|AND|OR|XOR|NOT|NOP|CLR|EQU|MEM|POT0|POT1|POT2|ADCL|ADCR|DACL|DACR|REG[0-9]|REG1[0-9]|REG2[0-9]|REG3[0-1])\\b', 'keyword'],
+
+            //             // Hex
+            //             ['\\b0[xX][0-9A-Fa-f]+\\b', 'number.hex'],
+
+            //             // Decimal
+            //             ['\\b\\d+(\\.\\d+)?\\b', 'number'],
+
+            //             // Strings
+            //             ['"', {
+            //                 token: 'string.quote',
+            //                 next: '@string'
+            //             }]
+            //         ],
+
+            //         string: [
+            //             [/[^"]+/, 'string'],
+            //             ['"', {
+            //                 token: 'string.quote',
+            //                 next: '@pop'
+            //             }]
+            //         ]
+            //     }
+            // });
 
             monaco.editor.defineTheme('spinTheme', {
                 base: 'vs', // or 'vs-dark'
@@ -103,8 +161,46 @@
                 }
             });
 
-
-
+            monaco.editor.defineTheme('spinDark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    {
+                        token: 'keyword',
+                        foreground: 'd986ff',
+                        fontStyle: 'bold'
+                    },
+                    {
+                        token: 'comment',
+                        foreground: '6a9955',
+                        fontStyle: 'italic'
+                    },
+                    {
+                        token: 'label',
+                        foreground: '569cd6'
+                    },
+                    {
+                        token: 'number',
+                        foreground: 'f44747'
+                    },
+                    {
+                        token: 'number.hex',
+                        foreground: 'ff8800'
+                    },
+                    {
+                        token: 'string',
+                        foreground: 'ce9178'
+                    }
+                ],
+                colors: {
+                    'editor.foreground': '#d4d4d4',
+                    'editor.background': '#1e1e1e',
+                    'editorLineNumber.foreground': '#858585',
+                    'editorCursor.foreground': '#ffffff',
+                    'editor.selectionBackground': '#264f78',
+                    'editor.lineHighlightBackground': '#333333'
+                }
+            });
 
             // Create the Monaco Editor
             editor = monaco.editor.create(document.getElementById('editor'), {
@@ -132,15 +228,14 @@
         </script>
 
         <div class="header-bar">
-            <h1>DSP Sandbox Editor <span class="build">(build 09)</span></h1>
+            <h1>DSP Sandbox Editor <span class="build">(build 10)</span></h1>
             <img src="icon.png" alt="App Icon" class="app-icon">
         </div>
 
-
         <h2>Input Source Code</h2>
         <div class="file-input">
-            <input type="file" id="fileInput" accept=".asm,.txt,.spn" style="display: none;" onchange="loadFile()">
-            <button onclick="document.getElementById('fileInput').click()">Load File...</button>
+            <input type="file" id="fileInput" accept=".asm,.txt,.spn" style="display: none;">
+            <button onclick="handleFileLoad()">Load File...</button>
 
             <div class="example-buttons">
                 <span>Or select an example program:</span>
@@ -155,8 +250,6 @@
             </div>
         </div>
 
-
-
         <div class="editor-container">
             <div id="editor" style="width: 100%; height: 400px;"></div>
         </div>
@@ -166,73 +259,111 @@
                 <span class="shortcut">Ctrl+F / ⌘+F Find</span>
                 <span class="shortcut">Ctrl+H / ⌘+H Replace</span>
                 <span class="shortcut">F3 Find Next</span>
+            </label><br>
+                        <label>
+                <span class="shortcut">Editor accepts only ASCII text</span>
             </label>
-
         </div>
+
         <div class="options">
             <label>
-                <input type="checkbox" id="clampOption"> Clamp out-of-range values
+                <input type="checkbox" id="editorHeightToggle" onchange="toggleEditorHeight()"> Large editor window
             </label>
             <label>
-                <input type="checkbox" id="spinRealsOption"> Use '1' and '2' as 1.0 and 2.0 (compatibility mode)
+                <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()"> Enable dark mode
             </label>
             <label>
                 <input type="checkbox" id="minimapToggle" onchange="toggleMinimap()"> Show editor mini-map
             </label>
         </div>
 
-
         <div>
             <button onclick="assemble()">Assemble</button>
-            <button onclick="clearAssembly()">Clear Assembly</button>
+            <button onclick="clearEditor()">Clear Editor</button>
             <button onclick="saveSource()">Save Source...</button>
         </div>
 
         <div id="messages"></div>
 
-<div class="output-section">
-  <h2>Output</h2>
-  <div class="output-controls">
-    <div>
-      <button onclick="selectOutputDirectory()" id="selectDirBtn">Select Output Directory</button>
-      <span id="outputDirDisplay" style="margin-left: 10px; color: #666; font-style: italic;">No directory selected</span>
-    </div>
+        <div class="output-section">
+            <h2>Output</h2>
+            <div class="output-controls">
+                <div>
+                    <button onclick="selectOutputDirectory()" id="selectDirBtn">Select Output Directory</button>
+                    <span id="outputDirDisplay" style="margin-left: 10px; color: #666; font-style: italic;">No directory selected</span>
+                </div>
 
-    <!-- Begin Grid of Buttons -->
-    <div style="margin-top: 10px;">
-      Filename / Toggle Position:
-       <span id="filenameLabel" style="font-weight: bold; margin-left: 5px; color: #333;">(none selected)</span>
-      <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px;">
-        <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">⏶ 1 ⏶</button>
-        <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">⏶ 5 ⏷</button>
-        <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">⏺ 3 ⏶</button>
-        <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">⏺ 7 ⏷</button>
-        <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">⏷ 2 ⏶</button>
-        <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">⏷ 6 ⏷</button>
-        <button class="filename-btn" data-filename="0.hex" onclick="selectFilename(this)">0 (BYPASS)</button>
-        <button class="filename-btn" data-filename="4.hex" onclick="selectFilename(this)">4 (Not Used)</button>
-      </div>
-      <br>
-       ⏶ = switch up, ⏺ = switch mid, ⏷ = switch down
-    </div>
-    <!-- End Grid -->
+                <!-- Begin Grid of Buttons -->
+                <div style="margin-top: 10px;">
+                    Filename / Toggle Position:
+                    <span id="filenameLabel" style="font-weight: bold; margin-left: 5px; color: #333;">(none selected)</span>
+                    <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px;">
+                        <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">⏶ 1 ⏶</button>
+                        <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">⏶ 5 ⏷</button>
+                        <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">⏺ 3 ⏶</button>
+                        <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">⏺ 7 ⏷</button>
+                        <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">⏷ 2 ⏶</button>
+                        <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">⏷ 6 ⏷</button>
+                        <button class="filename-btn" data-filename="0.hex" onclick="selectFilename(this)">0 (BYPASS)</button>
+                        <button class="filename-btn" data-filename="4.hex" onclick="selectFilename(this)">4 (Not Used)</button>
+                    </div>
+                    <br>
+                    ⏶ = switch up, ⏺ = switch mid, ⏷ = switch down
+                </div>
+                <!-- End Grid -->
 
-    <div style="margin-top: 10px;">
-      <button onclick="downloadHex()" id="downloadHexBtn" disabled>Download HEX</button>
-      <button onclick="downloadBinary()" id="downloadBinBtn" disabled>Download Binary</button>
-    </div>
-  </div>
+                <div style="margin-top: 10px;">
+                    <button onclick="downloadHex()" id="downloadHexBtn" disabled>Download HEX</button>
+                    <button onclick="downloadBinary()" id="downloadBinBtn" disabled>Download Binary</button>
+                    <button onclick="clearAssembly()">Clear Assembly</button>
+                </div>
+            </div>
 
-  <div class="output-text-section">
-    <h3 onclick="toggleOutput()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
-      <span id="outputToggle">▶</span> Assembly Output
-    </h3>
-    <div id="outputContent" class="output-content collapsed">
-      <textarea id="output" readonly placeholder="Assembly output will appear here..."></textarea>
-    </div>
-  </div>
-</div>
+            <div class="output-text-section">
+                <h3 onclick="toggleOutput()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
+                    <span id="outputToggle">▶</span> Assembly Output
+                </h3>
+                <div id="outputContent" class="output-content collapsed">
+                    <textarea id="output" readonly placeholder="Assembly output will appear here..."></textarea>
+                </div>
+            </div>
+        </div>
 
+        <!-- Modal dialogs for user prompts -->
+        <div id="confirmModal" class="modal">
+            <div class="modal-content">
+                <h3 id="confirmTitle">Confirm Action</h3>
+                <p id="confirmMessage">Are you sure you want to proceed?</p>
+                <div class="modal-buttons">
+                    <button class="btn-secondary" onclick="closeModal('confirmModal')">Cancel</button>
+                    <button class="btn-primary" id="confirmOkBtn">OK</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="threeChoiceModal" class="modal">
+            <div class="modal-content">
+                <h3 id="threeChoiceTitle">Unsaved Changes</h3>
+                <p id="threeChoiceMessage">You have unsaved changes. What would you like to do?</p>
+                <div class="modal-buttons">
+                    <button class="btn-secondary" id="threeChoiceCancelBtn">Cancel</button>
+                    <button class="btn-danger" id="threeChoiceDiscardBtn">Discard</button>
+                    <button class="btn-primary" id="threeChoiceSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="inputModal" class="modal">
+            <div class="modal-content">
+                <h3 id="inputTitle">Input Required</h3>
+                <label for="modalInput" id="inputLabel">Please enter a value:</label>
+                <input type="text" id="modalInput" placeholder="Enter value...">
+                <div class="modal-buttons">
+                    <button class="btn-secondary" onclick="closeModal('inputModal')">Cancel</button>
+                    <button class="btn-primary" id="inputOkBtn">OK</button>
+                </div>
+            </div>
+        </div>
 
         <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 11px; color: #666; line-height: 1.4;">
             <p><strong>MIT License</strong></p>
@@ -255,7 +386,33 @@
                 SOFTWARE.</p>
         </footer>
 
+        <script>
+
+        // // Prompt to save before leaving page
+        window.addEventListener('beforeunload', function(e) {
+            if (hasEditorContent()) {
+                e.preventDefault();
+                e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        });
+
+        // Just add the hidden checkboxes - app.js will handle the rest
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add hidden checkboxes that app.js expects
+            const hiddenCheckboxes = document.createElement('div');
+            hiddenCheckboxes.style.display = 'none';
+            hiddenCheckboxes.innerHTML = `
+                <input type="checkbox" id="clampOption">
+                <input type="checkbox" id="spinRealsOption">
+            `;
+            document.body.appendChild(hiddenCheckboxes);
+        });
+        </script>
+        <script src="examples.js"></script>
+        <script src="assembler.js"></script>
         <script src="app.js"></script>
+    </div>
 </body>
 
 </html>
