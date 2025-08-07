@@ -2,12 +2,35 @@
 let assembledData = null;
 let outputDirectoryHandle = null;
 
+// async function selectOutputDirectory() {
+//     try {
+//         if ('showDirectoryPicker' in window) {
+//             outputDirectoryHandle = await window.showDirectoryPicker();
+//             document.getElementById('outputDirDisplay').textContent = `Selected: ${outputDirectoryHandle.name}`;
+//             showMessage('Output directory selected successfully', 'success');
+//         } else {
+//             showMessage('Directory selection not supported in this browser', 'error');
+//         }
+//     } catch (err) {
+//         if (err.name !== 'AbortError') {
+//             showMessage('Error selecting directory: ' + err.message, 'error');
+//         }
+//     }
+// }
+
 async function selectOutputDirectory() {
     try {
         if ('showDirectoryPicker' in window) {
             outputDirectoryHandle = await window.showDirectoryPicker();
             document.getElementById('outputDirDisplay').textContent = `Selected: ${outputDirectoryHandle.name}`;
+            
             showMessage('Output directory selected successfully', 'success');
+            
+            // Try to find and read the hardware identifier JSON file
+            // Make sure we have the handle before calling this
+            if (outputDirectoryHandle) {
+                await readHardwareIdentifier();
+            }
         } else {
             showMessage('Directory selection not supported in this browser', 'error');
         }
@@ -18,7 +41,165 @@ async function selectOutputDirectory() {
     }
 }
 
+async function readHardwareIdentifier() {
+    if (!outputDirectoryHandle) {
+        const messages = document.getElementById('messages');
+        const existingContent = messages.innerHTML;
+        const errorDiv = '<div class="error">No output directory selected</div>';
+        messages.innerHTML = existingContent + errorDiv;
+        return;
+    }
+
+    try {
+        // Try to find a hardware identifier JSON file
+        const possibleFilenames = [
+            'hardware_id.json',
+            'device_info.json', 
+            'device_id.json',
+            'hardware_info.json',
+            'config.json',
+            'device.json'
+        ];
+
+        let hardwareInfo = null;
+        let foundFilename = null;
+        let debugInfo = [];
+
+        // First, let's see what files are actually in the directory
+        debugInfo.push('Scanning directory for files...');
+        
+        for (const filename of possibleFilenames) {
+            try {
+                debugInfo.push(`Trying to read: ${filename}`);
+                const fileHandle = await outputDirectoryHandle.getFileHandle(filename);
+                const file = await fileHandle.getFile();
+                const content = await file.text();
+                debugInfo.push(`Found file: ${filename}, size: ${content.length} bytes`);
+                
+                // Try to parse as JSON
+                const jsonData = JSON.parse(content);
+                debugInfo.push(`Parsed JSON successfully from ${filename}`);
+                
+                // Check if it looks like a hardware identifier file
+                if (jsonData.device_type || jsonData.firmware_version || jsonData.device_id || jsonData.hardware_info) {
+                    hardwareInfo = jsonData;
+                    foundFilename = filename;
+                    debugInfo.push(`Hardware info found in ${filename}`);
+                    break;
+                } else {
+                    debugInfo.push(`${filename} doesn't appear to be a hardware identifier file`);
+                }
+            } catch (err) {
+                debugInfo.push(`Error reading ${filename}: ${err.message}`);
+                continue;
+            }
+        }
+
+        if (hardwareInfo) {
+            // Check if this is the expected hardware device
+            const expectedDeviceType = "FV1 Sandbox"; // Change this to match your expected device
+            
+            if (hardwareInfo.device_type === expectedDeviceType) {
+                displayHardwareInfo(hardwareInfo, foundFilename);
+            } else {
+                // Hardware device doesn't match - revert to default downloads
+                revertToDefaultDirectory();
+                const messages = document.getElementById('messages');
+                const errorDiv = '<div class="error">Hardware device not found, reverting to default directory</div>';
+                messages.innerHTML = errorDiv;
+                return;
+            }
+        } else {
+            // No hardware identifier found - revert to default downloads
+            revertToDefaultDirectory();
+            const messages = document.getElementById('messages');
+            const errorDiv = '<div class="error">Hardware device not found, reverting to default directory</div>';
+            messages.innerHTML = errorDiv;
+            return;
+        }
+        
+    } catch (err) {
+        // Error reading hardware identifier - revert to default downloads
+        revertToDefaultDirectory();
+        const messages = document.getElementById('messages');
+        const errorDiv = `<div class="error">Hardware device not found, reverting to default directory</div>`;
+        messages.innerHTML = errorDiv;
+    }
+}
+
+function revertToDefaultDirectory() {
+    // Clear the output directory handle to revert to normal browser downloads
+    outputDirectoryHandle = null;
+    
+    // Update the UI to show no directory selected
+    document.getElementById('outputDirDisplay').textContent = 'No directory selected';
+    
+    // Disable the download buttons since we need a filename selected
+    document.getElementById('downloadHexBtn').disabled = true;
+    document.getElementById('downloadBinBtn').disabled = true;
+}
+
+function displayHardwareInfo(hardwareInfo, filename) {
+    const messages = document.getElementById('messages');
+    const existingContent = messages.innerHTML;
+    
+    let infoHtml = '<div class="success hardware-info">';
+    infoHtml += `<strong>Hardware Identifier Found (${filename}):</strong><br>`;
+    
+    if (hardwareInfo.device_type) {
+        infoHtml += `Device Type: <strong>${hardwareInfo.device_type}</strong><br>`;
+    }
+    
+    if (hardwareInfo.firmware_version) {
+        infoHtml += `Firmware Version: <strong>${hardwareInfo.firmware_version}</strong><br>`;
+    }
+    
+    if (hardwareInfo.device_id) {
+        infoHtml += `Device ID: <strong>${hardwareInfo.device_id}</strong><br>`;
+    }
+    
+    if (hardwareInfo.hardware_info) {
+        if (hardwareInfo.hardware_info.manufacturer) {
+            infoHtml += `Manufacturer: <strong>${hardwareInfo.hardware_info.manufacturer}</strong><br>`;
+        }
+        if (hardwareInfo.hardware_info.model) {
+            infoHtml += `Model: <strong>${hardwareInfo.hardware_info.model}</strong><br>`;
+        }
+        if (hardwareInfo.hardware_info.serial_number) {
+            infoHtml += `Serial Number: <strong>${hardwareInfo.hardware_info.serial_number}</strong><br>`;
+        }
+    }
+    
+    if (hardwareInfo.timestamp) {
+        const date = new Date(hardwareInfo.timestamp);
+        infoHtml += `Last Updated: <strong>${date.toLocaleString()}</strong><br>`;
+    }
+    
+    infoHtml += '</div>';
+    
+    messages.innerHTML = existingContent + infoHtml;
+}
+
 let selectedFilename = null;
+
+// function selectFilename(btn) {
+//     // Deselect all buttons
+//     document.querySelectorAll('.filename-btn').forEach(b => b.classList.remove('selected'));
+
+//     // Mark the clicked one as selected
+//     btn.classList.add('selected');
+
+//     // Store the selected filename
+//     selectedFilename = btn.dataset.filename;
+
+//     // Update the visible label
+//     document.getElementById('filenameLabel').textContent = btn.textContent;
+
+//     // Enable download buttons if output directory is selected
+//     const outputDirSelected = document.getElementById('outputDirDisplay').textContent !== 'No directory selected';
+//     document.getElementById('downloadHexBtn').disabled = !outputDirSelected;
+//     document.getElementById('downloadBinBtn').disabled = !outputDirSelected;
+// }
 
 function selectFilename(btn) {
     // Deselect all buttons
@@ -33,11 +214,74 @@ function selectFilename(btn) {
     // Update the visible label
     document.getElementById('filenameLabel').textContent = btn.textContent;
 
-    // Enable download buttons if output directory is selected
-    const outputDirSelected = document.getElementById('outputDirDisplay').textContent !== 'No directory selected';
-    document.getElementById('downloadHexBtn').disabled = !outputDirSelected;
-    document.getElementById('downloadBinBtn').disabled = !outputDirSelected;
+    // Enable download buttons if we have assembled data (regardless of directory selection)
+    const hasAssembly = assembledData !== null && document.getElementById('output').value.trim() !== '';
+    document.getElementById('downloadHexBtn').disabled = !hasAssembly;
+    document.getElementById('downloadBinBtn').disabled = !hasAssembly;
 }
+
+// function assemble() {
+//     // const source = document.getElementById('sourceCode').value;
+//     const source = editor.getValue();
+//     const clamp = document.getElementById('clampOption').checked;
+//     const spinReals = document.getElementById('spinRealsOption').checked;
+
+//     if (!source.trim()) {
+//         showMessage('Please enter some assembly code', 'error');
+//         return;
+//     }
+
+//     const assembler = new FV1Assembler(source, {
+//         clamp,
+//         spinReals
+//     });
+//     const success = assembler.parse();
+
+//     // Display messages
+//     let messages = '';
+//     if (assembler.warnings.length > 0) {
+//         messages += '<div class="warning">Warnings:<br>' + assembler.warnings.join('<br>') + '</div>';
+//     }
+//     if (assembler.errors.length > 0) {
+//         messages += '<div class="error">Errors:<br>' + assembler.errors.join('<br>') + '</div>';
+//     }
+
+//     if (success) {
+//         assembler.generateMachineCode();
+//         assembledData = assembler.program;
+
+//         const hex = assembler.toIntelHex();
+//         document.getElementById('output').value = hex;
+
+//         // Get assembly statistics
+//         const stats = assembler.getAssemblyStats();
+
+//         // Auto-expand output section when assembly is successful
+//         // const outputContent = document.getElementById('outputContent');
+//         // const toggle = document.getElementById('outputToggle');
+//         // if (outputContent.classList.contains('collapsed')) {
+//         //     outputContent.classList.remove('collapsed');
+//         //     toggle.textContent = '▼';
+//         // }
+
+//         document.getElementById('downloadHexBtn').disabled = false;
+//         document.getElementById('downloadBinBtn').disabled = false;
+
+//         if (messages === '') {
+//             messages = '<div class="success">Assembly successful!</div>';
+//         }
+
+//         // Add assembly statistics
+//         messages += `<div class="info">Instructions: ${stats.nonNopInstructions} (${stats.totalInstructions} total including padding) | Checksum: 0x${stats.checksum.toString(16).toUpperCase().padStart(4, '0')}</div>`;
+//     } else {
+//         document.getElementById('output').value = '';
+//         document.getElementById('downloadHexBtn').disabled = true;
+//         document.getElementById('downloadBinBtn').disabled = true;
+//         assembledData = null;
+//     }
+
+//     document.getElementById('messages').innerHTML = messages;
+// }
 
 function assemble() {
     // const source = document.getElementById('sourceCode').value;
@@ -75,16 +319,10 @@ function assemble() {
         // Get assembly statistics
         const stats = assembler.getAssemblyStats();
 
-        // Auto-expand output section when assembly is successful
-        // const outputContent = document.getElementById('outputContent');
-        // const toggle = document.getElementById('outputToggle');
-        // if (outputContent.classList.contains('collapsed')) {
-        //     outputContent.classList.remove('collapsed');
-        //     toggle.textContent = '▼';
-        // }
-
-        document.getElementById('downloadHexBtn').disabled = false;
-        document.getElementById('downloadBinBtn').disabled = false;
+        // Enable download buttons if a filename is selected (regardless of directory)
+        const hasFilename = selectedFilename !== null;
+        document.getElementById('downloadHexBtn').disabled = !hasFilename;
+        document.getElementById('downloadBinBtn').disabled = !hasFilename;
 
         if (messages === '') {
             messages = '<div class="success">Assembly successful!</div>';
@@ -288,6 +526,35 @@ function showMessage(msg, type) {
     document.getElementById('messages').innerHTML = `<div class="${className}">${msg}</div>`;
 }
 
+// async function downloadHex() {
+//     const hex = document.getElementById('output').value;
+
+//     if (!selectedFilename) {
+//         showMessage('Please select a filename first.', 'error');
+//         return;
+//     }
+
+//     const filename = selectedFilename;
+
+//     if (outputDirectoryHandle && 'showDirectoryPicker' in window) {
+//         try {
+//             const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
+//                 create: true
+//             });
+//             const writable = await fileHandle.createWritable();
+//             await writable.write(hex);
+//             await writable.close();
+//             showMessage(`File saved as ${filename} in selected directory`, 'success');
+//         } catch (err) {
+//             showMessage('Error saving to directory: ' + err.message, 'error');
+//             // Fallback to regular download
+//             downloadFile(filename, hex, 'text/plain');
+//         }
+//     } else {
+//         downloadFile(filename, hex, 'text/plain');
+//     }
+// }
+
 async function downloadHex() {
     const hex = document.getElementById('output').value;
 
@@ -313,7 +580,9 @@ async function downloadHex() {
             downloadFile(filename, hex, 'text/plain');
         }
     } else {
+        // No directory selected, use normal browser download
         downloadFile(filename, hex, 'text/plain');
+        showMessage(`File downloaded as ${filename} to default downloads folder`, 'success');
     }
 }
 
