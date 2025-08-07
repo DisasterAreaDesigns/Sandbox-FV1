@@ -17,8 +17,27 @@
         <script src="monaco.js"></script>
 
         <div class="header-bar">
-            <h1>DSP Sandbox Editor <span class="build">(build 11)</span></h1>
+            <h1>DSP Sandbox Editor <span class="build">(build 12)</span></h1>
             <img src="icon.png" alt="App Icon" class="app-icon">
+        </div>
+
+        <div class="instructions-section">
+            <h3 onclick="toggleInstructions()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
+                <span id="instructionsToggle">▶</span> Instructions
+            </h3>
+            <div id="instructionsContent" class="instructions-content collapsed">
+                <div class="instructions-text">
+                    <p>Enter SpinASM source code into the editor area, or select a file or example.  Press the <b>Assemble</b> button to verify and assemble the code into a HEX file</p>
+                    
+                    <p>If connecting to a Sandbox hardware unit, use the <b>Select Output Directory</b> button to specify the path to your Sandbox (typically /CIRCUITPY).</p>
+
+                    <p>Use the <b>Filename / Toggle Position</b> buttons to select the destination slot on your hardware device </p>
+                    
+                    <p>Press the <b>Download HEX</b> button to save your algorithm to the Sandbox hardware unit</p>
+                    
+                    <p>When satisfied with your source code, press the <b>Save Source...</b> button to download a local copy.</p>
+                </div>
+            </div>
         </div>
 
         <h2>Input Source Code</h2>
