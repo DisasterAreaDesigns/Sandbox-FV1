@@ -2,22 +2,6 @@
 let assembledData = null;
 let outputDirectoryHandle = null;
 
-// async function selectOutputDirectory() {
-//     try {
-//         if ('showDirectoryPicker' in window) {
-//             outputDirectoryHandle = await window.showDirectoryPicker();
-//             document.getElementById('outputDirDisplay').textContent = `Selected: ${outputDirectoryHandle.name}`;
-//             showMessage('Output directory selected successfully', 'success');
-//         } else {
-//             showMessage('Directory selection not supported in this browser', 'error');
-//         }
-//     } catch (err) {
-//         if (err.name !== 'AbortError') {
-//             showMessage('Error selecting directory: ' + err.message, 'error');
-//         }
-//     }
-// }
-
 async function selectOutputDirectory() {
     try {
         if ('showDirectoryPicker' in window) {
@@ -132,7 +116,7 @@ function revertToDefaultDirectory() {
     outputDirectoryHandle = null;
     
     // Update the UI to show no directory selected
-    document.getElementById('outputDirDisplay').textContent = 'No directory selected';
+    document.getElementById('outputDirDisplay').textContent = 'No directory selected, using default directory';
     
     // Disable the download buttons since we need a filename selected
     document.getElementById('downloadHexBtn').disabled = true;
@@ -182,25 +166,6 @@ function displayHardwareInfo(hardwareInfo, filename) {
 
 let selectedFilename = null;
 
-// function selectFilename(btn) {
-//     // Deselect all buttons
-//     document.querySelectorAll('.filename-btn').forEach(b => b.classList.remove('selected'));
-
-//     // Mark the clicked one as selected
-//     btn.classList.add('selected');
-
-//     // Store the selected filename
-//     selectedFilename = btn.dataset.filename;
-
-//     // Update the visible label
-//     document.getElementById('filenameLabel').textContent = btn.textContent;
-
-//     // Enable download buttons if output directory is selected
-//     const outputDirSelected = document.getElementById('outputDirDisplay').textContent !== 'No directory selected';
-//     document.getElementById('downloadHexBtn').disabled = !outputDirSelected;
-//     document.getElementById('downloadBinBtn').disabled = !outputDirSelected;
-// }
-
 function selectFilename(btn) {
     // Deselect all buttons
     document.querySelectorAll('.filename-btn').forEach(b => b.classList.remove('selected'));
@@ -220,68 +185,50 @@ function selectFilename(btn) {
     document.getElementById('downloadBinBtn').disabled = !hasAssembly;
 }
 
-// function assemble() {
-//     // const source = document.getElementById('sourceCode').value;
-//     const source = editor.getValue();
-//     const clamp = document.getElementById('clampOption').checked;
-//     const spinReals = document.getElementById('spinRealsOption').checked;
+// New function to clear editor content with three-choice prompt
+async function clearEditor() {
+    if (hasEditorContent()) {
+        const choice = await showThreeChoiceDialog(
+            'Unsaved Changes',
+            'You have unsaved changes in the editor. What would you like to do before clearing?'
+        );
 
-//     if (!source.trim()) {
-//         showMessage('Please enter some assembly code', 'error');
-//         return;
-//     }
+        if (choice === 'cancel') {
+            return; // User cancelled
+        } else if (choice === 'save') {
+            const saveResult = await saveSource();
+            if (saveResult === false) {
+                return; // User cancelled the save dialog
+            }
+        }
+        // If choice === 'discard', just proceed with clearing
+    }
 
-//     const assembler = new FV1Assembler(source, {
-//         clamp,
-//         spinReals
-//     });
-//     const success = assembler.parse();
+    if (editor) {
+        editor.setValue('');
+    }
+    
+    // Clear assembly output and disable download buttons
+    document.getElementById('output').value = '';
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('downloadHexBtn').disabled = true;
+    document.getElementById('downloadBinBtn').disabled = true;
+    assembledData = null;
+}
 
-//     // Display messages
-//     let messages = '';
-//     if (assembler.warnings.length > 0) {
-//         messages += '<div class="warning">Warnings:<br>' + assembler.warnings.join('<br>') + '</div>';
-//     }
-//     if (assembler.errors.length > 0) {
-//         messages += '<div class="error">Errors:<br>' + assembler.errors.join('<br>') + '</div>';
-//     }
-
-//     if (success) {
-//         assembler.generateMachineCode();
-//         assembledData = assembler.program;
-
-//         const hex = assembler.toIntelHex();
-//         document.getElementById('output').value = hex;
-
-//         // Get assembly statistics
-//         const stats = assembler.getAssemblyStats();
-
-//         // Auto-expand output section when assembly is successful
-//         // const outputContent = document.getElementById('outputContent');
-//         // const toggle = document.getElementById('outputToggle');
-//         // if (outputContent.classList.contains('collapsed')) {
-//         //     outputContent.classList.remove('collapsed');
-//         //     toggle.textContent = '▼';
-//         // }
-
-//         document.getElementById('downloadHexBtn').disabled = false;
-//         document.getElementById('downloadBinBtn').disabled = false;
-
-//         if (messages === '') {
-//             messages = '<div class="success">Assembly successful!</div>';
-//         }
-
-//         // Add assembly statistics
-//         messages += `<div class="info">Instructions: ${stats.nonNopInstructions} (${stats.totalInstructions} total including padding) | Checksum: 0x${stats.checksum.toString(16).toUpperCase().padStart(4, '0')}</div>`;
-//     } else {
-//         document.getElementById('output').value = '';
-//         document.getElementById('downloadHexBtn').disabled = true;
-//         document.getElementById('downloadBinBtn').disabled = true;
-//         assembledData = null;
-//     }
-
-//     document.getElementById('messages').innerHTML = messages;
-// }
+function clearSource() {
+    document.getElementById('sourceCode').value = '';
+    // updateLineNumbers();
+    
+    // Clear assembly output and disable download buttons
+    document.getElementById('output').value = '';
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('downloadHexBtn').disabled = true;
+    document.getElementById('downloadBinBtn').disabled = true;
+    assembledData = null;
+    
+    showMessage('Source code cleared', 'success');
+}
 
 function assemble() {
     // const source = document.getElementById('sourceCode').value;
@@ -319,10 +266,11 @@ function assemble() {
         // Get assembly statistics
         const stats = assembler.getAssemblyStats();
 
-        // Enable download buttons if a filename is selected (regardless of directory)
+        // Enable download buttons if we have assembled data and a filename is selected
         const hasFilename = selectedFilename !== null;
-        document.getElementById('downloadHexBtn').disabled = !hasFilename;
-        document.getElementById('downloadBinBtn').disabled = !hasFilename;
+        const hasAssembly = assembledData !== null && hex.trim() !== '';
+        document.getElementById('downloadHexBtn').disabled = !(hasFilename && hasAssembly);
+        document.getElementById('downloadBinBtn').disabled = !(hasFilename && hasAssembly);
 
         if (messages === '') {
             messages = '<div class="success">Assembly successful!</div>';
@@ -347,12 +295,6 @@ function clearAssembly() {
     document.getElementById('downloadBinBtn').disabled = true;
     assembledData = null;
     showMessage('Assembly output cleared', 'success');
-}
-
-function clearSource() {
-    document.getElementById('sourceCode').value = '';
-    updateLineNumbers();
-    showMessage('Source code cleared', 'success');
 }
 
 // Check if editor has content
@@ -381,30 +323,6 @@ async function handleFileLoad() {
 
     // Trigger file selection
     document.getElementById('fileInput').click();
-}
-
-// New function to clear editor content with three-choice prompt
-async function clearEditor() {
-    if (hasEditorContent()) {
-        const choice = await showThreeChoiceDialog(
-            'Unsaved Changes',
-            'You have unsaved changes in the editor. What would you like to do before clearing?'
-        );
-
-        if (choice === 'cancel') {
-            return; // User cancelled
-        } else if (choice === 'save') {
-            const saveResult = await saveSource();
-            if (saveResult === false) {
-                return; // User cancelled the save dialog
-            }
-        }
-        // If choice === 'discard', just proceed with clearing
-    }
-
-    if (editor) {
-        editor.setValue('');
-    }
 }
 
 // User prompt functions
@@ -525,35 +443,6 @@ function showMessage(msg, type) {
     const className = type === 'error' ? 'error' : 'success';
     document.getElementById('messages').innerHTML = `<div class="${className}">${msg}</div>`;
 }
-
-// async function downloadHex() {
-//     const hex = document.getElementById('output').value;
-
-//     if (!selectedFilename) {
-//         showMessage('Please select a filename first.', 'error');
-//         return;
-//     }
-
-//     const filename = selectedFilename;
-
-//     if (outputDirectoryHandle && 'showDirectoryPicker' in window) {
-//         try {
-//             const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
-//                 create: true
-//             });
-//             const writable = await fileHandle.createWritable();
-//             await writable.write(hex);
-//             await writable.close();
-//             showMessage(`File saved as ${filename} in selected directory`, 'success');
-//         } catch (err) {
-//             showMessage('Error saving to directory: ' + err.message, 'error');
-//             // Fallback to regular download
-//             downloadFile(filename, hex, 'text/plain');
-//         }
-//     } else {
-//         downloadFile(filename, hex, 'text/plain');
-//     }
-// }
 
 async function downloadHex() {
     const hex = document.getElementById('output').value;
@@ -809,4 +698,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <input type="checkbox" id="spinRealsOption">
     `;
     document.body.appendChild(hiddenCheckboxes);
+
+        // Select "3.hex" by default
+    const defaultButton = document.querySelector('.filename-btn[data-filename="3.hex"]');
+    if (defaultButton) {
+        selectFilename(defaultButton);
+    }
 });
