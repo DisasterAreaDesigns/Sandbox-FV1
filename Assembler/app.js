@@ -213,6 +213,7 @@ async function clearEditor() {
     document.getElementById('messages').innerHTML = '';
     document.getElementById('downloadHexBtn').disabled = true;
     document.getElementById('downloadBinBtn').disabled = true;
+    document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
 }
 
@@ -225,6 +226,7 @@ function clearSource() {
     document.getElementById('messages').innerHTML = '';
     document.getElementById('downloadHexBtn').disabled = true;
     document.getElementById('downloadBinBtn').disabled = true;
+    document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
     
     showMessage('Source code cleared', 'success');
@@ -267,11 +269,12 @@ function assemble() {
         const stats = assembler.getAssemblyStats();
 
         // Enable download buttons if we have assembled data and a filename is selected
+        // Enable download buttons if we have assembled data and a filename is selected
         const hasFilename = selectedFilename !== null;
         const hasAssembly = assembledData !== null && hex.trim() !== '';
         document.getElementById('downloadHexBtn').disabled = !(hasFilename && hasAssembly);
         document.getElementById('downloadBinBtn').disabled = !(hasFilename && hasAssembly);
-
+        document.getElementById('downloadCHeaderBtn').disabled = !hasAssembly; // Only needs assembly data, not filename
         if (messages === '') {
             messages = '<div class="success">Assembly successful!</div>';
         }
@@ -293,6 +296,7 @@ function clearAssembly() {
     document.getElementById('messages').innerHTML = '';
     document.getElementById('downloadHexBtn').disabled = true;
     document.getElementById('downloadBinBtn').disabled = true;
+    document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
     showMessage('Assembly output cleared', 'success');
 }
@@ -476,23 +480,38 @@ async function downloadHex() {
 }
 
 
-function downloadBinary() {
+async function downloadBinary() {
     if (!assembledData) return;
 
-    const filename = document.getElementById('filenameSelect').value.replace('.hex', '.bin');
+    if (!selectedFilename) {
+        showMessage('Please select a filename first.', 'error');
+        return;
+    }
+
+    const filename = selectedFilename.replace('.hex', '.bin');
     const blob = new Blob([assembledData.slice(0, 512)], {
         type: 'application/octet-stream'
     });
 
     if (outputDirectoryHandle && 'showDirectoryPicker' in window) {
-        // For binary files, we'll use the regular download since File System Access API
-        // is more complex with binary data
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+        try {
+            const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
+                create: true
+            });
+            const writable = await fileHandle.createWritable();
+            await writable.write(assembledData.slice(0, 512));
+            await writable.close();
+            showMessage(`Binary file saved as ${filename} in selected directory`, 'success');
+        } catch (err) {
+            showMessage('Error saving binary to directory: ' + err.message, 'error');
+            // Fallback to regular download
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
     } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -500,7 +519,30 @@ function downloadBinary() {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
+        showMessage(`Binary file downloaded as ${filename} to default downloads folder`, 'success');
     }
+}
+
+async function downloadCHeader() {
+    if (!assembledData) return;
+
+    const filename = await showInputDialog(
+        'Save C Header',
+        'Enter filename:',
+        'Enter filename (e.g., my_program.h)',
+        'fv1_program.h'
+    );
+
+    if (!filename) return; // User cancelled
+
+    const assembler = new FV1Assembler('', {}); // Create instance just for the toCHeader method
+    assembler.program = assembledData; // Set the assembled data
+    
+    const arrayName = filename.replace(/\.[^/.]+$/, "").toUpperCase() + '_DATA';
+    const cHeader = assembler.toCHeader(arrayName);
+    
+    downloadFile(filename, cHeader, 'text/plain');
+    showMessage(`C header downloaded as ${filename}`, 'success');
 }
 
 function downloadFile(filename, content, mimeType) {
@@ -569,6 +611,7 @@ async function loadExample(exampleName) {
         document.getElementById('messages').innerHTML = '';
         document.getElementById('downloadHexBtn').disabled = true;
         document.getElementById('downloadBinBtn').disabled = true;
+        document.getElementById('downloadCHeaderBtn').disabled = true;
         assembledData = null;
         showMessage('Example loaded successfully', 'success');
     }
@@ -589,6 +632,7 @@ async function loadFile() {
         document.getElementById('messages').innerHTML = '';
         document.getElementById('downloadHexBtn').disabled = true;
         document.getElementById('downloadBinBtn').disabled = true;
+        document.getElementById('downloadCHeaderBtn').disabled = true;
         assembledData = null;
         showMessage('File loaded successfully', 'success');
         document.getElementById('exampleSelect').value = '';

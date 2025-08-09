@@ -593,16 +593,17 @@ class FV1Assembler {
         return reg;
     }
 
+
     parseS1_14(mnemonic = '') {
         let arg = this.parseExpression();
         if (Number.isInteger(arg)) {
             if (arg >= -2 && arg <= 1) {
-                arg = Math.round(arg * this.REF_S1_14);
+                arg = Math.floor(arg * this.REF_S1_14);
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S1_14, Math.min(this.MAX_S1_14, arg));
                     this.warn(`S1.14 arg clamped to ${arg} for ${mnemonic}`, this.sline);
-                    arg = Math.round(arg * this.REF_S1_14);
+                    arg = Math.floor(arg * this.REF_S1_14);
                 } else {
                     this.error(`S1.14 arg ${arg} out of range (-2 to ${this.MAX_S1_14}) for ${mnemonic}`, this.sline);
                     arg = 0;
@@ -618,7 +619,7 @@ class FV1Assembler {
                     arg = 0;
                 }
             }
-            arg = Math.round(arg * this.REF_S1_14);
+            arg = Math.floor(arg * this.REF_S1_14);
         }
         return arg & 0xFFFF;
     }
@@ -780,24 +781,47 @@ class FV1Assembler {
         return arg & 0x7FF;
     }
 
+    // parseDelayAddress(mnemonic = '') {
+    //     let addr = this.parseExpression();
+    //     if (addr < this.MIN_S_15 || addr > this.MAX_S_15) {
+    //         addr = Math.round(addr);
+    //         if (addr < -0x8000 || addr > 0x7FFF) {
+    //             if (this.clamp) {
+    //                 addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
+    //                 this.warn(`Address clamped to 0x${(addr >>> 0).toString(16)} for ${mnemonic}`, this.sline);
+    //             } else {
+    //                 this.error(`Invalid address 0x${(addr >>> 0).toString(16)} for ${mnemonic}`, this.sline);
+    //                 addr = 0;
+    //             }
+    //         }
+    //     } else {
+    //         addr = Math.round(addr * this.REF_S_15);
+    //     }
+    //     return addr & 0x7FFF;
+    // }
+
     parseDelayAddress(mnemonic = '') {
-        let addr = this.parseExpression();
-        if (addr < this.MIN_S_15 || addr > this.MAX_S_15) {
-            addr = Math.round(addr);
-            if (addr < -0x8000 || addr > 0x7FFF) {
-                if (this.clamp) {
-                    addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
-                    this.warn(`Address clamped to 0x${(addr >>> 0).toString(16)} for ${mnemonic}`, this.sline);
-                } else {
-                    this.error(`Invalid address 0x${(addr >>> 0).toString(16)} for ${mnemonic}`, this.sline);
-                    addr = 0;
-                }
+    let addr = this.parseExpression();
+    
+    // Check if this is a fractional value that should be converted
+    if (addr >= this.MIN_S_15 && addr <= this.MAX_S_15) {
+        // This is a fractional value, convert it
+        addr = Math.round(addr * this.REF_S_15);
+    } else {
+        // This is an integer delay address, use as-is but validate range
+        addr = Math.round(addr);
+        if (addr < -0x8000 || addr > 0x7FFF) {
+            if (this.clamp) {
+                addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
+                this.warn(`Address clamped to 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.sline);
+            } else {
+                this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.sline);
+                addr = 0;
             }
-        } else {
-            addr = Math.round(addr * this.REF_S_15);
         }
-        return addr & 0x7FFF;
     }
+    return addr & 0x7FFF;
+}
 
     parseOffset(mnemonic = '') {
         const offset = Math.floor(this.parseExpression());
@@ -1277,230 +1301,402 @@ class FV1Assembler {
 
         const value = this.parseExpression();
 
+        // if (directive === 'MEM') {
+        //     const size = Math.floor(value);
+        //     if (size < 0 || size > this.DELAYSIZE) {
+        //         this.error(`Invalid memory size ${size}`, this.sline);
+        //         return;
+        //     }
+
+        //     const base = this.delaymem;
+        //     const top = base + size;
+
+        //     if (top > this.DELAYSIZE) {
+        //         this.error(`Delay memory exhausted: requested ${size} exceeds ${this.DELAYSIZE - this.delaymem} available`, this.sline);
+        //         return;
+        //     }
+        //     this.symtbl[baseName] = base;
+        //     this.symtbl[baseName + '#'] = top;
+        //     this.symtbl[baseName + '^'] = base + Math.floor(size / 2);
+        //     this.delaymem = top + 1;
+        // } else { // EQU
+        //     this.symtbl[baseName] = value;
+        // }
+        // fart
+
         if (directive === 'MEM') {
-            const size = Math.floor(value);
-            if (size < 0 || size > this.DELAYSIZE) {
-                this.error(`Invalid memory size ${size}`, this.sline);
-                return;
-            }
-
-            const base = this.delaymem;
-            const top = base + size;
-
-            if (top > this.DELAYSIZE) {
-                this.error(`Delay memory exhausted: requested ${size} exceeds ${this.DELAYSIZE - this.delaymem} available`, this.sline);
-                return;
-            }
-            this.symtbl[baseName] = base;
-            this.symtbl[baseName + '#'] = top;
-            this.symtbl[baseName + '^'] = base + Math.floor(size / 2);
-            this.delaymem = top + 1;
-        } else { // EQU
-            this.symtbl[baseName] = value;
-        }
+    const size = Math.floor(value);
+    if (size < 0 || size > this.DELAYSIZE) {
+        this.error(`Invalid memory size ${size}`, this.sline);
+        return;
     }
 
-    // Updated main parse loop to handle line boundaries
-    parse() {
-        this.nextSymbol();
+    const base = this.delaymem;
+    const top = base + size;
 
-        while (this.sym.type !== 'EOF') {
+    if (top > this.DELAYSIZE) {
+        this.error(`Delay memory exhausted: requested ${size} exceeds ${this.DELAYSIZE - this.delaymem} available`, this.sline);
+        return;
+    }
+    
+    this.symtbl[baseName] = base;
+    this.symtbl[baseName + '#'] = top;
+    this.symtbl[baseName + '^'] = base + Math.floor(size / 2);
+    
+    // Fix: should be top, not top + 1
+    this.delaymem = top;
+} else { // EQU
+    this.symtbl[baseName] = value;
+}
+    }
+
+   // Updated main parse loop to handle line boundaries
+parse() {
+    this.nextSymbol();
+    while (this.sym.type !== 'EOF') {
+        if (this.sym.type === 'EOL') {
+            // Skip empty lines
+            this.nextSymbol();
+            continue;
+        }
+        if (this.sym.type === 'LABEL') {
+            const label = this.sym.upper;
+            const addr = this.icnt;
+            if (this.jmptbl[label] && this.jmptbl[label] !== addr) {
+                this.error(`Label ${label} redefined`, this.sline);
+            }
+            this.jmptbl[label] = addr;
+            this.nextSymbol();
+            // After a label, we might have EOL, which is fine
             if (this.sym.type === 'EOL') {
-                // Skip empty lines
                 this.nextSymbol();
                 continue;
             }
-
-            if (this.sym.type === 'LABEL') {
-                const label = this.sym.upper;
-                const addr = this.icnt;
-                if (this.jmptbl[label] && this.jmptbl[label] !== addr) {
-                    this.error(`Label ${label} redefined`, this.sline);
-                }
-                this.jmptbl[label] = addr;
+        } else if (this.sym.type === 'MNEMONIC') {
+            this.parseInstruction();
+            // After instruction, we should be at EOL or EOF
+            if (this.sym.type === 'EOL') {
                 this.nextSymbol();
-
-                // After a label, we might have EOL, which is fine
-                if (this.sym.type === 'EOL') {
+                continue;
+            } else if (this.sym.type !== 'EOF' && this.sym.type !== 'LABEL' &&
+                this.sym.type !== 'MNEMONIC' && this.sym.type !== 'ASSEMBLER') {
+                this.error(`Unexpected tokens after instruction: ${this.sym.type} "${this.sym.text}"`, this.sline);
+                // Skip to next line
+                while (this.sym.type !== 'EOL' && this.sym.type !== 'EOF') {
                     this.nextSymbol();
-                    continue;
                 }
-            } else if (this.sym.type === 'MNEMONIC') {
-                this.parseInstruction();
-
-                // After instruction, we should be at EOL or EOF
-                if (this.sym.type === 'EOL') {
+            }
+        } else if (this.sym.type === 'ASSEMBLER') {
+            this.parseAssemblerDirective();
+            // After directive, we should be at EOL or EOF
+            if (this.sym.type === 'EOL') {
+                this.nextSymbol();
+                continue;
+            } else if (this.sym.type !== 'EOF' && this.sym.type !== 'LABEL' &&
+                this.sym.type !== 'MNEMONIC' && this.sym.type !== 'ASSEMBLER') {
+                this.error(`Unexpected tokens after directive: ${this.sym.type} "${this.sym.text}"`, this.sline);
+                // Skip to next line
+                while (this.sym.type !== 'EOL' && this.sym.type !== 'EOF') {
                     this.nextSymbol();
-                    continue;
-                } else if (this.sym.type !== 'EOF' && this.sym.type !== 'LABEL' &&
-                    this.sym.type !== 'MNEMONIC' && this.sym.type !== 'ASSEMBLER') {
-                    this.error(`Unexpected tokens after instruction: ${this.sym.type} "${this.sym.text}"`, this.sline);
-                    // Skip to next line
-                    while (this.sym.type !== 'EOL' && this.sym.type !== 'EOF') {
-                        this.nextSymbol();
-                    }
                 }
-            } else if (this.sym.type === 'ASSEMBLER') {
+            }
+        } else if (this.sym.type === 'NAME') {
+            // Check if this is really an assembler directive by looking ahead
+            const savedSym = this.sym;
+            const savedLinebuf = [...this.linebuf];
+            const savedSline = this.sline;
+            this.nextSymbol();
+            if (this.sym.type === 'ASSEMBLER') {
+                // This is "NAME ASSEMBLER" pattern, parse as directive
+                // Restore and reparse
+                this.sym = savedSym;
+                this.linebuf = savedLinebuf;
+                this.sline = savedSline;
                 this.parseAssemblerDirective();
-
-                // After directive, we should be at EOL or EOF
+                // After directive, handle EOL
                 if (this.sym.type === 'EOL') {
                     this.nextSymbol();
                     continue;
-                } else if (this.sym.type !== 'EOF' && this.sym.type !== 'LABEL' &&
-                    this.sym.type !== 'MNEMONIC' && this.sym.type !== 'ASSEMBLER') {
-                    this.error(`Unexpected tokens after directive: ${this.sym.type} "${this.sym.text}"`, this.sline);
-                    // Skip to next line
-                    while (this.sym.type !== 'EOL' && this.sym.type !== 'EOF') {
-                        this.nextSymbol();
-                    }
                 }
-            } else if (this.sym.type === 'NAME') {
-                // Check if this is really an assembler directive by looking ahead
-                const savedSym = this.sym;
-                const savedLinebuf = [...this.linebuf];
-                const savedSline = this.sline;
+            } else {
+                // This is just a stray NAME, skip it with error
+                this.error(`Unexpected NAME "${savedSym.text}"`, savedSline);
+                // Skip to next line
+                while (this.sym.type !== 'EOL' && this.sym.type !== 'EOF') {
+                    this.nextSymbol();
+                }
+            }
+        } else {
+            this.error(`Unexpected ${this.sym.type} "${this.sym.text}"`, this.sline);
+            this.nextSymbol();
+        }
+    }
 
-                this.nextSymbol();
-                if (this.sym.type === 'ASSEMBLER') {
-                    // This is "NAME ASSEMBLER" pattern, parse as directive
-                    // Restore and reparse
-                    this.sym = savedSym;
-                    this.linebuf = savedLinebuf;
-                    this.sline = savedSline;
-                    this.parseAssemblerDirective();
-
-                    // After directive, handle EOL
-                    if (this.sym.type === 'EOL') {
-                        this.nextSymbol();
-                        continue;
+    // Resolve SKP targets
+    for (let i = 0; i < this.pl.length; i++) {
+        const inst = this.pl[i];
+        if (inst.cmd[0] === 'SKP' && inst.target !== null) {
+            if (this.jmptbl.hasOwnProperty(inst.target)) {
+                const iloc = inst.addr;
+                const dest = this.jmptbl[inst.target];
+                if (dest > iloc) {
+                    const offset = dest - iloc - 1;
+                    if (offset > 0x3F) {
+                        this.error(`Offset from SKP to ${inst.target} (${offset}) too large`, inst.line);
+                    } else {
+                        inst.cmd[2] = offset;  // Update the offset in the instruction
                     }
                 } else {
-                    // This is just a stray NAME, skip it with error
-                    this.error(`Unexpected NAME "${savedSym.text}"`, savedSline);
-                    // Skip to next line
-                    while (this.sym.type !== 'EOL' && this.sym.type !== 'EOF') {
-                        this.nextSymbol();
-                    }
+                    this.error(`Target ${inst.target} does not follow SKP`, inst.line);
                 }
             } else {
-                this.error(`Unexpected ${this.sym.type} "${this.sym.text}"`, this.sline);
-                this.nextSymbol();
+                this.error(`Undefined target ${inst.target} for SKP`, inst.line);
+            }
+        }
+    }
+
+    return this.errors.length === 0;
+}
+
+generateMachineCode() {
+    // First, pad the program list with NOP instructions to reach PROGLEN
+    while (this.pl.length < this.PROGLEN) {
+        this.pl.push({
+            cmd: ['SKP', 0x00, 0x00],
+            addr: this.pl.length,
+            target: null
+        });
+    }
+
+    // Convert program to machine code
+    for (let i = 0; i < this.pl.length; i++) {
+        const inst = this.pl[i];
+        let machineCode = 0;
+        const mnemonic = inst.cmd[0];
+
+        if (mnemonic === 'RAW') {
+            machineCode = inst.cmd[1] & 0xFFFFFFFF;
+        } else {
+            const opcode = this.opcodes[mnemonic];
+            machineCode = opcode;
+
+            switch (mnemonic) {
+                case 'AND':
+                case 'OR':
+                case 'XOR':
+                    // 24-bit mask at bits 8-31
+                    machineCode |= (inst.cmd[1] & 0xFFFFFF) << 8;
+                    break;
+
+                case 'SOF':
+                case 'EXP':
+                    // S1.14 multiplier at bits 16-31, S.10 offset at bits 5-15
+                    machineCode |= (inst.cmd[1] & 0xFFFF) << 16;
+                    machineCode |= (inst.cmd[2] & 0x7FF) << 5;
+                    break;
+
+                case 'LOG':
+                    // S1.14 multiplier at bits 16-31, S4.6 offset at bits 5-15
+                    machineCode |= (inst.cmd[1] & 0xFFFF) << 16;
+                    machineCode |= (inst.cmd[2] & 0x7FF) << 5;
+                    break;
+
+                case 'RDAX':
+                case 'WRAX':
+                case 'RDFX':
+                case 'WRLX':
+                case 'WRHX':
+                case 'MAXX':
+                    // Use the raw register value from symbol table (0x20-0x3F range)
+                    const regValue = inst.cmd[1] & 0x3F;
+                    machineCode |= (inst.cmd[2] & 0xFFFF) << 16;  // 16-bit constant
+                    machineCode |= (regValue & 0x3F) << 5;        // 6-bit register (raw value)
+                    break;
+
+                case 'MULX':
+                    // Use the raw register value from symbol table (0x20-0x3F range)
+                    const mulxRegValue = inst.cmd[1] & 0x3F;
+                    machineCode |= (mulxRegValue & 0x3F) << 5;
+                    break;
+
+                case 'RDA':
+                case 'WRA':
+                case 'WRAP':
+                    // 15-bit address at bits 5-19, 11-bit multiplier at bits 21-31
+                    machineCode |= (inst.cmd[1] & 0x7FFF) << 5;
+                    machineCode |= (inst.cmd[2] & 0x7FF) << 21;
+                    break;
+
+                case 'RMPA':
+                    // 11-bit multiplier at bits 21-31
+                    machineCode |= (inst.cmd[1] & 0x7FF) << 21;
+                    break;
+
+                case 'SKP':
+                    // 5-bit condition at bits 27-31, 6-bit offset at bits 21-26
+                    machineCode |= (inst.cmd[1] & 0x1F) << 27;
+                    machineCode |= (inst.cmd[2] & 0x3F) << 21;
+                    break;
+
+                case 'WLDS':
+                    // 1-bit LFO select at bit 29, 9-bit frequency at bits 20-28, 15-bit amplitude at bits 5-19
+                    machineCode |= (inst.cmd[1] & 0x01) << 29;
+                    machineCode |= (inst.cmd[2] & 0x1FF) << 20;
+                    machineCode |= (inst.cmd[3] & 0x7FFF) << 5;
+                    break;
+
+                case 'WLDR':
+                    // 2-bit LFO select at bits 29-30, 16-bit frequency at bits 13-28, 2-bit amplitude at bits 5-6
+                    machineCode |= (inst.cmd[1] & 0x03) << 29;
+                    machineCode |= (inst.cmd[2] & 0xFFFF) << 13;
+                    machineCode |= (inst.cmd[3] & 0x03) << 5;
+                    break;
+
+                case 'JAM':
+                    // 2-bit LFO select at bits 6-7
+                    machineCode |= (inst.cmd[1] & 0x03) << 6;
+                    break;
+
+                case 'CHO':
+                    // 2-bit type at bits 30-31, 2-bit LFO at bits 21-22, 6-bit flags at bits 24-29, 16-bit arg at bits 5-20
+                    machineCode |= (inst.cmd[1] & 0x03) << 30;
+                    machineCode |= (inst.cmd[2] & 0x03) << 21;
+                    machineCode |= (inst.cmd[3] & 0x3F) << 24;
+                    machineCode |= (inst.cmd[4] & 0xFFFF) << 5;
+                    break;
+
+                case 'NOP':
+                    // NOP is SKP 0,0 - no additional fields needed
+                    break;
+
+                default:
+                    // This shouldn't happen if opcodes table is complete
+                    this.error(`Unknown instruction in machine code generation: ${mnemonic}`);
+                    break;
             }
         }
 
-        // ... rest of parse method (resolve skip targets, pad with NOPs)
-        return this.errors.length === 0;
+        // Write as big-endian 32-bit value to program buffer
+        const offset = i * 4;
+        this.program[offset] = (machineCode >> 24) & 0xFF;
+        this.program[offset + 1] = (machineCode >> 16) & 0xFF;
+        this.program[offset + 2] = (machineCode >> 8) & 0xFF;
+        this.program[offset + 3] = machineCode & 0xFF;
     }
+}
 
-    generateMachineCode() {
-        for (let i = 0; i < this.pl.length; i++) {
-            const inst = this.pl[i];
-            let machineCode = 0;
+    // generateMachineCode() {
+    //     for (let i = 0; i < this.pl.length; i++) {
+    //         const inst = this.pl[i];
+    //         let machineCode = 0;
 
-            const mnemonic = inst.cmd[0];
+    //         const mnemonic = inst.cmd[0];
 
-            if (mnemonic === 'RAW') {
-                machineCode = inst.cmd[1];
-            } else {
-                const opcode = this.opcodes[mnemonic];
-                machineCode = opcode;
+    //         if (mnemonic === 'RAW') {
+    //             machineCode = inst.cmd[1];
+    //         } else {
+    //             const opcode = this.opcodes[mnemonic];
+    //             machineCode = opcode;
 
-                switch (mnemonic) {
-                    case 'AND':
-                    case 'OR':
-                    case 'XOR':
-                        machineCode |= (inst.cmd[1] & 0xFFFFFF) << 8;
-                        break;
+    //             switch (mnemonic) {
+    //                 case 'AND':
+    //                 case 'OR':
+    //                 case 'XOR':
+    //                     machineCode |= (inst.cmd[1] & 0xFFFFFF) << 8;
+    //                     break;
 
-                    case 'SOF':
-                    case 'EXP':
-                        machineCode |= (inst.cmd[1] & 0xFFFF) << 16;
-                        machineCode |= (inst.cmd[2] & 0x7FF) << 5;
-                        break;
+    //                 case 'SOF':
+    //                 case 'EXP':
+    //                     machineCode |= (inst.cmd[1] & 0xFFFF) << 16;
+    //                     machineCode |= (inst.cmd[2] & 0x7FF) << 5;
+    //                     break;
 
-                    case 'LOG':
-                        machineCode |= (inst.cmd[1] & 0xFFFF) << 16;
-                        machineCode |= (inst.cmd[2] & 0x7FF) << 5;
-                        break;
+    //                 case 'LOG':
+    //                     machineCode |= (inst.cmd[1] & 0xFFFF) << 16;
+    //                     machineCode |= (inst.cmd[2] & 0x7FF) << 5;
+    //                     break;
 
-                    case 'RDAX':
-                    case 'WRAX':
-                    case 'RDFX':
-                    case 'WRLX':
-                    case 'WRHX':
-                    case 'MAXX':
-                        machineCode |= (inst.cmd[1] & 0x3F) << 5;
-                        machineCode |= (inst.cmd[2] & 0xFFFF) << 16;
-                        break;
+    //                 case 'RDAX':
+    //                 case 'WRAX':
+    //                 case 'RDFX':
+    //                 case 'WRLX':
+    //                 case 'WRHX':
+    //                 case 'MAXX':
+    //                     machineCode |= (inst.cmd[1] & 0x3F) << 5;
+    //                     machineCode |= (inst.cmd[2] & 0xFFFF) << 16;
+    //                     break;
 
-                    case 'MULX':
-                        machineCode |= (inst.cmd[1] & 0x3F) << 5;
-                        break;
+    //                 case 'MULX':
+    //                     machineCode |= (inst.cmd[1] & 0x3F) << 5;
+    //                     break;
 
-                    case 'RDA':
-                    case 'WRA':
-                    case 'WRAP':
-                        machineCode |= (inst.cmd[1] & 0x7FFF) << 5;
-                        machineCode |= (inst.cmd[2] & 0x7FF) << 21;
-                        break;
+    //                 case 'RDA':
+    //                 case 'WRA':
+    //                 case 'WRAP':
+    //                     machineCode |= (inst.cmd[1] & 0x7FFF) << 5;
+    //                     machineCode |= (inst.cmd[2] & 0x7FF) << 21;
+    //                     break;
 
-                    case 'RMPA':
-                        machineCode |= (inst.cmd[1] & 0x7FF) << 21;
-                        break;
+    //                 case 'RMPA':
+    //                     machineCode |= (inst.cmd[1] & 0x7FF) << 21;
+    //                     break;
 
-                    case 'SKP':
-                        machineCode |= (inst.cmd[1] & 0x1F) << 27;
-                        machineCode |= (inst.cmd[2] & 0x3F) << 21;
-                        break;
+    //                 case 'SKP':
+    //                     machineCode |= (inst.cmd[1] & 0x1F) << 27;
+    //                     machineCode |= (inst.cmd[2] & 0x3F) << 21;
+    //                     break;
 
-                    case 'WLDS':
-                        machineCode |= (inst.cmd[1] & 0x01) << 29;
-                        machineCode |= (inst.cmd[2] & 0x1FF) << 20;
-                        machineCode |= (inst.cmd[3] & 0x7FFF) << 5;
-                        break;
+    //                 case 'WLDS':
+    //                     machineCode |= (inst.cmd[1] & 0x01) << 29;
+    //                     machineCode |= (inst.cmd[2] & 0x1FF) << 20;
+    //                     machineCode |= (inst.cmd[3] & 0x7FFF) << 5;
+    //                     break;
 
-                    case 'WLDR':
-                        machineCode = 0b10010; // WLDR opcode
-                        machineCode |= (inst.cmd[1] & 0x03) << 29;
-                        machineCode |= (inst.cmd[2] & 0xFFFF) << 13;
-                        machineCode |= (inst.cmd[3] & 0x03) << 5;
-                        break;
-                    case 'WLDR':
-                        machineCode = 0b10010; // WLDR opcode  
-                        machineCode |= (inst.cmd[1] & 0x03) << 29; // lfo type (bits 30-29)
-                        machineCode |= (inst.cmd[2] & 0xFFFF) << 13; // frequency (bits 28-13)
-                        machineCode |= (inst.cmd[3] & 0x03) << 5; // amplitude (bits 6-5)
-                        break;
+    //                 case 'WLDR':
+    //                     machineCode = 0b10010; // WLDR opcode
+    //                     machineCode |= (inst.cmd[1] & 0x03) << 29;
+    //                     machineCode |= (inst.cmd[2] & 0xFFFF) << 13;
+    //                     machineCode |= (inst.cmd[3] & 0x03) << 5;
+    //                     break;
 
-                    case 'JAM':
-                        machineCode |= (inst.cmd[1] & 0x03) << 6;
-                        break;
+    //                 case 'JAM':
+    //                     machineCode |= (inst.cmd[1] & 0x03) << 6;
+    //                     break;
 
-                    case 'CHO':
-                        machineCode |= (inst.cmd[1] & 0x03) << 30; // type
-                        machineCode |= (inst.cmd[2] & 0x03) << 21; // lfo
-                        machineCode |= (inst.cmd[3] & 0x3F) << 24; // flags
-                        machineCode |= (inst.cmd[4] & 0xFFFF) << 5; // arg
-                        break;
-                }
-            }
+    //                 case 'CHO':
+    //                     machineCode |= (inst.cmd[1] & 0x03) << 30; // type
+    //                     machineCode |= (inst.cmd[2] & 0x03) << 21; // lfo
+    //                     machineCode |= (inst.cmd[3] & 0x3F) << 24; // flags
+    //                     machineCode |= (inst.cmd[4] & 0xFFFF) << 5; // arg
+    //                     break;
+    //             }
+    //         }
 
-            // Write as big-endian 32-bit value
-            const offset = i * 4;
-            this.program[offset] = (machineCode >> 24) & 0xFF;
-            this.program[offset + 1] = (machineCode >> 16) & 0xFF;
-            this.program[offset + 2] = (machineCode >> 8) & 0xFF;
-            this.program[offset + 3] = machineCode & 0xFF;
-        }
-    }
+    //         // Write as big-endian 32-bit value
+    //         const offset = i * 4;
+    //         this.program[offset] = (machineCode >> 24) & 0xFF;
+    //         this.program[offset + 1] = (machineCode >> 16) & 0xFF;
+    //         this.program[offset + 2] = (machineCode >> 8) & 0xFF;
+    //         this.program[offset + 3] = machineCode & 0xFF;
+    //     }
+
+    //         // Pad remaining program space with NOP instructions (SKP 0,0 = 0x11000000)
+    //     const nopInstruction = 0x00000011; // SKP 0,0 opcode
+    //     for (let i = this.pl.length; i < this.PROGLEN; i++) {
+    //         const offset = i * 4;
+    //         this.program[offset] = (nopInstruction >> 24) & 0xFF;
+    //         this.program[offset + 1] = (nopInstruction >> 16) & 0xFF;
+    //         this.program[offset + 2] = (nopInstruction >> 8) & 0xFF;
+    //         this.program[offset + 3] = nopInstruction & 0xFF;
+    //     }
+    // }
 
     toIntelHex() {
         let hex = '';
         const data = this.program.slice(0, 512); // 128 instructions * 4 bytes
 
-        for (let i = 0; i < data.length; i += 4) { // Changed from 16 to 4
-            const len = 4; // Changed to always 4 bytes per line
+        for (let i = 0; i < data.length; i += 4) {
+            const len = 4;
             let line = ':';
             line += len.toString(16).padStart(2, '0').toUpperCase();
             line += i.toString(16).padStart(4, '0').toUpperCase();
@@ -1516,12 +1712,32 @@ class FV1Assembler {
 
             checksum = (~checksum + 1) & 0xFF;
             line += checksum.toString(16).padStart(2, '0').toUpperCase();
-            hex += line + '\n';
+            hex += line + '\r\n'; // Changed from '\n' to '\r\n'
         }
 
-        hex += ':00000001FF\n'; // EOF
+        hex += ':00000001FF\r\n'; // EOF with CRLF
         return hex;
     }
+
+    toCHeader(arrayName = 'ASSEMBLED_PROGRAM') {
+    let header = `${arrayName}[] = {\n`;
+    const data = this.program.slice(0, 512); // 128 instructions * 4 bytes
+    
+    for (let i = 0; i < data.length; i += 4) {
+        header += '0x' + data[i].toString(16).padStart(2, '0').toUpperCase() + ',';
+        header += '0x' + data[i + 1].toString(16).padStart(2, '0').toUpperCase() + ',';
+        header += '0x' + data[i + 2].toString(16).padStart(2, '0').toUpperCase() + ',';
+        header += '0x' + data[i + 3].toString(16).padStart(2, '0').toUpperCase();
+        
+        if (i < data.length - 4) {
+            header += ',';
+        }
+        header += '\n';
+    }
+    
+    header += '};\n';
+    return header;
+}
 
     getAssemblyStats() {
         // Count non-NOP instructions
