@@ -633,7 +633,7 @@ class FV1Assembler {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S1_9, Math.min(this.MAX_S1_9, arg));
                     this.warn(`S1.9 arg clamped to ${arg} for ${mnemonic}`, this.sline);
-                    arg = Math.round(arg * this.REF_S1_9);
+                    arg = Math.floor(arg * this.REF_S1_9);
                 } else {
                     this.error(`S1.9 arg ${arg} out of range (-2 to ${this.MAX_S1_9}) for ${mnemonic}`, this.sline);
                     arg = 0;
@@ -649,7 +649,7 @@ class FV1Assembler {
                     arg = 0;
                 }
             }
-            arg = Math.round(arg * this.REF_S1_9);
+            arg = Math.floor(arg * this.REF_S1_9);
         }
         return arg & 0x7FF;
     }
@@ -658,12 +658,12 @@ class FV1Assembler {
         let arg = this.parseExpression();
         if (Number.isInteger(arg)) {
             if (arg >= -1 && arg <= 0) {
-                arg = Math.round(arg * this.REF_S_10);
+                arg = Math.floor(arg * this.REF_S_10);
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S_10, Math.min(this.MAX_S_10, arg));
                     this.warn(`S.10 arg clamped to ${arg} for ${mnemonic}`, this.sline);
-                    arg = Math.round(arg * this.REF_S_10);
+                    arg = Math.floor(arg * this.REF_S_10);
                 } else {
                     this.error(`S.10 arg ${arg} out of range (-1 to ${this.MAX_S_10}) for ${mnemonic}`, this.sline);
                     arg = 0;
@@ -679,7 +679,7 @@ class FV1Assembler {
                     arg = 0;
                 }
             }
-            arg = Math.round(arg * this.REF_S_10);
+            arg = Math.floor(arg * this.REF_S_10);
         }
         return arg & 0x7FF;
     }
@@ -716,7 +716,7 @@ class FV1Assembler {
                     arg = 0;
                 }
             }
-            arg = Math.round(arg * this.REF_S_15);
+            arg = Math.floor(arg * this.REF_S_15);
             return arg & 0xFFFF;
         }
     }
@@ -746,7 +746,7 @@ class FV1Assembler {
                     arg = 0;
                 }
             }
-            arg = Math.round(arg * this.REF_S_23);
+            arg = Math.floor(arg * this.REF_S_23);
         }
         return arg & 0xFFFFFF;
     }
@@ -755,12 +755,12 @@ class FV1Assembler {
         let arg = this.parseExpression();
         if (Number.isInteger(arg)) {
             if (arg >= -16 && arg <= 15) {
-                arg = Math.round(arg * this.REF_S4_6);
+                arg = Math.floor(arg * this.REF_S4_6);
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S4_6, Math.min(this.MAX_S4_6, arg));
                     this.warn(`S4.6 arg clamped to ${arg} for ${mnemonic}`, this.sline);
-                    arg = Math.round(arg * this.REF_S4_6);
+                    arg = Math.floor(arg * this.REF_S4_6);
                 } else {
                     this.error(`S4.6 arg ${arg} out of range (-16 to ${this.MAX_S4_6}) for ${mnemonic}`, this.sline);
                     arg = 0;
@@ -776,7 +776,7 @@ class FV1Assembler {
                     arg = 0;
                 }
             }
-            arg = Math.round(arg * this.REF_S4_6);
+            arg = Math.floor(arg * this.REF_S4_6);
         }
         return arg & 0x7FF;
     }
