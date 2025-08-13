@@ -50,8 +50,8 @@ h2, h3 {
 
 /* Monaco Editor */
 .editor-container {
-    resize: both;
-    overflow: auto;
+    resize: none;
+    overflow: hidden;
     border: 1px solid #ccc;
     min-height: 200px;
     min-width: 300px;

@@ -36,7 +36,8 @@ FILE_ADDRESS_MAP = {
     "4.hex": 0x0800,
     "5.hex": 0x0A00,
     "6.hex": 0x0C00,
-    "7.hex": 0x0E00
+    "7.hex": 0x0E00,
+    "all.hex": 0x0000  # Special case: write entire EEPROM starting from beginning
 }
 
 # Default start address for other filenames
@@ -142,15 +143,67 @@ def read_eeprom(eeprom_address, start_address, num_bytes):
             pass
         return None
 
+def clear_entire_eeprom():
+    """Clear the entire EEPROM by writing 0xFF to all locations"""
+    print_serial("Clearing entire EEPROM (writing 0xFF to all locations)...")
+    
+    # For 24LC32A: 4096 bytes (0x0000 to 0x0FFF)
+    eeprom_size = 4096
+    page_size = 32
+    
+    # Create a page of 0xFF bytes
+    clear_data = bytearray([0xFF] * page_size)
+    
+    for addr in range(0, eeprom_size, page_size):
+        print_serial("Clearing page at address 0x{:04X}".format(addr))
+        result = write_eeprom_page(EEPROM_ADDR, addr, clear_data)
+        
+        if not result:
+            print_serial("Error clearing page at address 0x{:04X}".format(addr))
+            return False
+    
+    print_serial("EEPROM cleared successfully")
+    return True
+
 def process_and_program_hex_file(filename):
     """Process a HEX file and program the EEPROM"""
     all_bytes = []
+    line_count = 0
+    min_addr = None
+    max_addr = None
     
     # Turn on DIM BLUE LED while processing files
     set_led_color(COLOR_OFF)
     
     try:
-        # Open and parse the HEX file
+        # Open and parse the HEX file - first pass to validate
+        with open(filename, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                line_count += 1
+                
+                byte_count, address, record_type, data = parse_hex_line(line)
+                
+                # Skip invalid lines
+                if byte_count is None:
+                    continue
+                
+                # Data record - track address range
+                if record_type == 0:
+                    if min_addr is None:
+                        min_addr = address
+                        max_addr = address + len(data) - 1
+                    else:
+                        min_addr = min(min_addr, address)
+                        max_addr = max(max_addr, address + len(data) - 1)
+                
+                # End of file record
+                elif record_type == 1:
+                    break
+        
+        # Second pass - actually extract the data first to check for zero-byte files
         with open(filename, "r") as f:
             for line in f:
                 byte_count, address, record_type, data = parse_hex_line(line)
@@ -167,20 +220,55 @@ def process_and_program_hex_file(filename):
                 elif record_type == 1:
                     break
         
-        # Check if the hex file contained any data
+        # Check if the hex file contained any data - do this BEFORE validation
         if len(all_bytes) == 0:
             print_serial("Ignoring zero-byte hex file: {}".format(filename))
             set_led_color(COLOR_OFF)
             return True  # Return True so file gets marked as processed
         
-        # Determine start address based on filename
+        # Determine expected parameters based on filename
         base_filename = filename.split('/')[-1]
+        
+        if base_filename == "all.hex":
+            expected_lines = 1025
+            expected_min_addr = 0x000
+            expected_max_addr = 0xFFF
+        else:
+            expected_lines = 513
+            expected_min_addr = 0x000
+            expected_max_addr = 0x1FF
+        
+        # Validate line count
+        if line_count != expected_lines:
+            print_serial("ERROR: {} must have exactly {} lines, but has {} lines".format(base_filename, expected_lines, line_count))
+            set_led_color(COLOR_RED)
+            return False
+        
+        # Validate address range
+        if min_addr != expected_min_addr or max_addr != expected_max_addr:
+            print_serial("ERROR: {} must have address range 0x{:03X}-0x{:03X}, but has 0x{:03X}-0x{:03X}".format(
+                base_filename, expected_min_addr, expected_max_addr, min_addr or 0, max_addr or 0))
+            set_led_color(COLOR_RED)
+            return False
+        
+        print_serial("Validation passed: {} lines, address range 0x{:03X}-0x{:03X}".format(line_count, min_addr, max_addr))
+        
+        # Determine start address based on filename
         if base_filename in FILE_ADDRESS_MAP:
             start_address = FILE_ADDRESS_MAP[base_filename]
         else:
             start_address = DEFAULT_START_ADDR
         
         print_serial("Using start address: 0x{:04X} for file: {}".format(start_address, base_filename))
+        print_serial("File contains {} bytes of data".format(len(all_bytes)))
+        
+        # Special handling for all.hex - clear EEPROM first
+        if base_filename == "all.hex":
+            print_serial("Processing all.hex - will clear entire EEPROM first")
+            if not clear_entire_eeprom():
+                print_serial("Failed to clear EEPROM for all.hex")
+                set_led_color(COLOR_RED)
+                return False
         
         # Program the EEPROM in pages (32 bytes per page for 24LC32A)
         total_bytes = len(all_bytes)
@@ -189,7 +277,7 @@ def process_and_program_hex_file(filename):
         print_serial("Programming EEPROM with " + str(total_bytes) + " bytes")
         
         # Start with dim blue LED during programming
-        set_led_color(COLOR_OFF)
+        set_led_color(COLOR_DIM_BLUE)
         
         for i in range(0, total_bytes, page_size):
             # Get the data for this page
@@ -207,48 +295,6 @@ def process_and_program_hex_file(filename):
                 print_serial("Error writing page at address 0x{:04X}".format(eeprom_addr))
                 set_led_color(COLOR_OFF)
                 return False
-        
-        # Verify the EEPROM contents (commented out for speed)
-        # print_serial("Verifying EEPROM contents...")
-        
-        # # Keep solid RED on during verification
-        # for i in range(0, total_bytes, page_size):
-        #     # Calculate the actual EEPROM address for this page
-        #     eeprom_addr = start_address + i
-        #     
-        #     # Read data from EEPROM
-        #     page_end = min(i + page_size, total_bytes)
-        #     page_length = page_end - i
-        #     
-        #     read_data = read_eeprom(EEPROM_ADDR, eeprom_addr, page_length)
-        #     
-        #     if read_data is None:
-        #         print_serial("Error reading page at address 0x{:04X}".format(eeprom_addr))
-        #         
-        #         # Exit programming mode
-        #         control_pin.value = True
-        #         time.sleep(0.1)
-        #         
-        #         # Indicate error with red blinking
-        #         blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
-        #         set_led_color(COLOR_OFF)
-        #         return False
-        #     
-        #     # Compare with expected data
-        #     expected_data = all_bytes[i:page_end]
-        #     if list(read_data) != expected_data:
-        #         print_serial("Verification failed at address 0x{:04X}".format(eeprom_addr))
-        #         print_serial("Expected: " + ", ".join(["0x{:02X}".format(b) for b in expected_data]))
-        #         print_serial("Read: " + ", ".join(["0x{:02X}".format(b) for b in read_data]))
-        #         
-        #         # Exit programming mode
-        #         control_pin.value = True
-        #         time.sleep(0.1)
-        #         
-        #         # Indicate error with red blinking
-        #         blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
-        #         set_led_color(COLOR_OFF)
-        #         return False
         
         # Programming complete - exit programming mode
         control_pin.value = True
@@ -271,6 +317,10 @@ def process_and_program_hex_file(filename):
         print_serial("Total bytes programmed: " + str(total_bytes))
         print_serial("Start address: 0x{:04X}".format(start_address))
         print_serial("End address: 0x{:04X}".format(start_address + total_bytes - 1))
+        
+        # Special message for all.hex
+        if base_filename == "all.hex":
+            print_serial("ENTIRE EEPROM PROGRAMMED with all.hex")
         
         # Indicate file programming success with GREEN LED
         set_led_color(COLOR_GREEN)
@@ -297,9 +347,15 @@ print_serial("  GREEN = file write successful")
 print_serial("  RED blinking = error/failure")
 print_serial("Place .HEX files in the root directory to program the EEPROM")
 print_serial("File to address mapping:")
-for file, addr in FILE_ADDRESS_MAP.items():
-    print_serial("  {} -> 0x{:04X}".format(file, addr))
-print_serial("Default address for other files: 0x{:04X}".format(DEFAULT_START_ADDR))
+# Sort files: numbered files first (0-7), then all.hex
+sorted_files = sorted(FILE_ADDRESS_MAP.items(), key=lambda x: (x[0] != "all.hex", x[0]))
+for file, addr in sorted_files:
+    if file == "all.hex":
+        print_serial("  {} -> 0x{:04X} (ENTIRE EEPROM - requires 1025 lines, 0x000-0xFFF)".format(file, addr))
+    else:
+        print_serial("  {} -> 0x{:04X} (requires 513 lines, 0x000-0x1FF)".format(file, addr))
+
+print_serial("Default address for other files: 0x{:04X} (requires 513 lines, 0x000-0x1FF)".format(DEFAULT_START_ADDR))
 
 # Try to initialize I2C and detect EEPROM
 try:
@@ -347,54 +403,135 @@ while True:
         if hex_files:
             # Reset programming complete flag
             programming_complete = False
+            actually_programmed = False  # Track if we actually programmed anything
             
-            for hex_file in hex_files:
+            # Special handling: if all.hex is present, process it first and alone
+            if "all.hex" in hex_files:
                 print_serial("")
-                print_serial("Found HEX file: " + hex_file)
+                print_serial("Found all.hex - processing as complete EEPROM image")
                 
                 # Switch to dim blue during processing
-                set_led_color(COLOR_OFF)
+                set_led_color(COLOR_DIM_BLUE)
                 
-                # Process the file and program the EEPROM
-                success = process_and_program_hex_file("/" + hex_file)
+                # Process only the all.hex file
+                success = process_and_program_hex_file("/all.hex")
                 
                 if success:
-                    print_serial("Successfully programmed EEPROM with " + hex_file)
                     # Add to our processed files set
-                    processed_files.add(hex_file)
+                    processed_files.add("all.hex")
                     print_serial("File marked as processed")
                     
                     # Optional: Create a small marker file to indicate processing
                     try:
-                        with open("/" + hex_file + ".programmed", "w") as f:
-                            f.write("Programmed on " + str(time.monotonic()))
+                        with open("/all.hex.programmed", "w") as f:
+                            f.write("Programmed entire EEPROM on " + str(time.monotonic()))
                     except:
                         pass
                     
-                    # LED stays green after successful write
-                    # Will turn off between writes in next iteration
+                    # Check if we actually programmed data (not a zero-byte file)
+                    # Re-open the file to check if it contained actual data
+                    try:
+                        all_bytes_check = []
+                        with open("/all.hex", "r") as f:
+                            for line in f:
+                                byte_count, address, record_type, data = parse_hex_line(line)
+                                if record_type == 0:  # Data record
+                                    all_bytes_check.extend(data)
+                        
+                        if len(all_bytes_check) > 0:
+                            print_serial("Successfully programmed entire EEPROM with all.hex")
+                            actually_programmed = True
+                            # LED stays green after successful write
+                            set_led_color(COLOR_GREEN)
+                        else:
+                            print_serial("all.hex was zero-byte file - no programming needed")
+                            set_led_color(COLOR_OFF)
+                    except:
+                        # If we can't re-check, assume it was programmed since success was True
+                        actually_programmed = True
+                        set_led_color(COLOR_GREEN)
                 else:
                     # Turn off LED on error
                     set_led_color(COLOR_RED)
-                    break
                 
-                # Turn off LED between writes
-                if hex_file != hex_files[-1]:
-                    set_led_color(COLOR_OFF)
-                    time.sleep(0.05)  # Brief delay between files
+                # After all.hex processing, toggle control pin ONLY if we actually programmed
+                if success and actually_programmed:
+                    print_serial("")
+                    print_serial("EEPROM fully programmed - entering programming mode...")
+                    control_pin.value = False
+                    time.sleep(0.01)  # 10ms delay
+                    control_pin.value = True
+                    print_serial("Programming mode complete (GP3 toggled)")
+                    programming_complete = True
+                    
+                    # Return to dim blue after programming complete
+                    set_led_color(COLOR_DIM_BLUE)
             
-            # After all files are written, toggle control pin once
-            if not programming_complete and len([f for f in hex_files if f in processed_files]) > 0:
-                print_serial("")
-                print_serial("All files written - entering programming mode...")
-                control_pin.value = False
-                time.sleep(0.01)  # 10ms delay
-                control_pin.value = True
-                print_serial("Programming mode complete (GP3 toggled)")
-                programming_complete = True
+            else:
+                # Process individual hex files normally
+                for hex_file in hex_files:
+                    print_serial("")
+                    print_serial("Found HEX file: " + hex_file)
+                    
+                    # Switch to dim blue during processing
+                    set_led_color(COLOR_OFF)
+                    
+                    # Process the file and program the EEPROM
+                    success = process_and_program_hex_file("/" + hex_file)
+                    
+                    if success:
+                        # Add to our processed files set
+                        processed_files.add(hex_file)
+                        print_serial("File marked as processed")
+                        
+                        # Check if we actually programmed data (not a zero-byte file)
+                        try:
+                            all_bytes_check = []
+                            with open("/" + hex_file, "r") as f:
+                                for line in f:
+                                    byte_count, address, record_type, data = parse_hex_line(line)
+                                    if record_type == 0:  # Data record
+                                        all_bytes_check.extend(data)
+                            
+                            if len(all_bytes_check) > 0:
+                                print_serial("Successfully programmed EEPROM with " + hex_file)
+                                actually_programmed = True
+                                # Optional: Create a small marker file to indicate processing
+                                try:
+                                    with open("/" + hex_file + ".programmed", "w") as f:
+                                        f.write("Programmed on " + str(time.monotonic()))
+                                except:
+                                    pass
+                                # LED stays green after successful write
+                                set_led_color(COLOR_GREEN)
+                            else:
+                                print_serial(hex_file + " was zero-byte file - no programming needed")
+                        except:
+                            # If we can't re-check, assume it was programmed since success was True
+                            actually_programmed = True
+                            set_led_color(COLOR_GREEN)
+                    else:
+                        # Turn off LED on error
+                        set_led_color(COLOR_RED)
+                        break
+                    
+                    # Turn off LED between writes
+                    if hex_file != hex_files[-1]:
+                        set_led_color(COLOR_OFF)
+                        time.sleep(0.05)  # Brief delay between files
                 
-                # Return to OFF after programming complete
-                set_led_color(COLOR_DIM_BLUE)
+                # After all files are written, toggle control pin once ONLY if we actually programmed
+                if not programming_complete and actually_programmed:
+                    print_serial("")
+                    print_serial("All files written - entering programming mode...")
+                    control_pin.value = False
+                    time.sleep(0.01)  # 10ms delay
+                    control_pin.value = True
+                    print_serial("Programming mode complete (GP3 toggled)")
+                    programming_complete = True
+                    
+                    # Return to dim blue after programming complete
+                    set_led_color(COLOR_DIM_BLUE)
         
         # Delay before checking again
         time.sleep(0.1)

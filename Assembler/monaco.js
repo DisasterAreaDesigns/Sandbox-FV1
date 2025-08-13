@@ -164,7 +164,7 @@ require(['vs/editor/editor.main'], function() {
             language: 'spin',
             theme: 'spinTheme',
             readOnly: true, // Start as read-only
-            automaticLayout: true,
+            automaticLayout: false,
             quickSuggestions: false,
             wordBasedSuggestions: false,
             selectOnLineNumbers: true,

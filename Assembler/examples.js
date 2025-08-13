@@ -55,7 +55,7 @@ wlds    sin0, 12, 100
 start:
 
 rdax    adcl, 1.0   ; read input
-wra     chodel, 1   ; write to chorus delay
+wra     chodel, 0.0 ; write to chorus delay
 
 rdax    pot0, 1.0   ; read pot0 for rate
 mulx    pot0        ; make log
@@ -77,5 +77,34 @@ flanger: `flanger test`,
 
 reverb: `reverb test`,
 
-tremolo: 'tremolo test',
+tremolo: `; Simple Mono Tremolo
+; POT0: tremolo rage, POT1: tremolo depth, POT2: not used
+
+equ temp reg0
+
+skp run, start
+; setup LFO
+wlds    sin0, 177, 32767
+
+start:
+
+rdax    pot0, 1.0   ; get speed pot
+mulx    pot0        ; make log so that speed feels natural
+sof     0.49, 0.01  ; scale pot rate
+wrax    sin0_rate, 0    ; set LFO rate
+
+; read the sin0 LFO and apply depth control
+; with depth at zero, the output should be a 1.0
+; with depth at full, the output should be a sine wave from 0 to 1.0
+
+cho rdal, 0     ; get sin0 value
+sof 0.5, 0.5    ; reduce size to -0.5 - +0.5, add 0.5, now ranges 0-1
+mulx    pot1    ; apply depth control
+sof -0.999, 0.999   ; invert LF0
+wrax    temp, 0.0   ; save scaled LFO
+
+rdax    adcl, 1.0   ; get input
+mulx    temp        ; scale by LFO
+
+wrax    dacl, 0.0   ; write output`,
 };

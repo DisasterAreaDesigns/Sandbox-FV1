@@ -29,9 +29,10 @@
                 
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span>Or select an example program:</span>
-                    <button onclick="loadExample('passthrough')">Simple Pass-through</button>
-                    <button onclick="loadExample('delay')">Simple Delay</button>
-                    <button onclick="loadExample('chorus')">Simple Chorus</button>
+                    <button onclick="loadExample('passthrough')">Bypass</button>
+                    <button onclick="loadExample('delay')">Delay</button>
+                    <button onclick="loadExample('chorus')">Chorus</button>
+                    <button onclick="loadExample('tremolo')">Tremolo</button>
                 </div>
             </div>
         </div>
@@ -48,14 +49,16 @@
             <div id="editorOptionsContent" class="editor-options-content collapsed">
                 <div class="editor-help-text">
                     <label>
+                        <span class="shortcut">Editor accepts ASCII text only</span>
+                    </label><br>
+                    <label>
                         <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
                         <span class="shortcut">Ctrl+F / ⌘+F Find</span>
                         <span class="shortcut">Ctrl+Shift+F / ⌘+⌥+F Replace</span>
                         <span class="shortcut">F3 Find Next</span>
-                    </label><br>
-                    <label>
-                        <span class="shortcut">Editor accepts ASCII text only</span>
+                        <span class="shortcut">F1 Editor Command Palette</span>
                     </label>
+
                 </div>
                 
                 <div class="options">

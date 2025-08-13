@@ -181,6 +181,9 @@ async function clearHardware() {
     for (let i = 0; i <= 7; i++) {
         hexFiles.push(`${i}.hex`);
     }
+
+    // add in all.hex
+    hexFiles.push('all.hex');
     
     try {
         let successCount = 0;
