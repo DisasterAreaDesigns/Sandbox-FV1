@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FV-1 Assembler</title>
+    <title>Sandbox FV1 Editor</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="favicon.ico">
 </head>
@@ -17,7 +17,7 @@
         <script src="monaco.js"></script>
 
         <div class="header-bar">
-            <h1>DSP Sandbox Editor <span class="build">(build 15)</span></h1>
+            <h1>Sandbox FV1 Editor <span class="build">(build 16)</span></h1>
             <img src="icon.png" alt="App Icon" class="app-icon">
         </div>
 
@@ -92,6 +92,7 @@
             <button onclick="downloadCHeader()" id="downloadCHeaderBtn" disabled>Download C Header</button>
             <div style="float: right;">
                 <button onclick="clearAssembly()">Clear Results</button>
+                <button onclick="clearHardware()" id="clearHardwareBtn" disabled>Clear Hardware</button>
             </div>
         </div>
 
@@ -105,6 +106,11 @@
                     <div>
                         <button onclick="selectOutputDirectory()" id="selectDirBtn">Select Output Directory</button>
                         <span id="outputDirDisplay" style="margin-left: 10px; color: #666; font-style: italic;">No directory selected, using default directory</span>
+                    </div><br>
+                    
+                    <div>
+                        <button onclick="serialConnect()">Select Serial Port</button>
+                        <span id="serialPortDisplay" style="margin-left: 10px; color: #666; font-style: italic;">No port selected</span>
                     </div>
 
                     <!-- Filename / Toggle Position Grid -->
@@ -112,17 +118,17 @@
                         Filename / Toggle Position:
                         <span id="filenameLabel" style="font-weight: bold; margin-left: 5px; color: #333;">(none selected)</span>
                         <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px;">
-                            <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">▶ 1 ▶</button>
-                            <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">▶ 5 ▷</button>
-                            <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">▸ 3 ▶</button>
-                            <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">▸ 7 ▷</button>
-                            <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">▷ 2 ▶</button>
-                            <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">▷ 6 ▷</button>
+                            <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">⬆ 1 ⬆</button>
+                            <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">⬆ 5 ⬇</button>
+                            <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">◉ 3 ⬆</button>
+                            <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">◉ 7 ⬇</button>
+                            <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">⬇ 2 ⬆</button>
+                            <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">⬇ 6 ⬇</button>
                             <button class="filename-btn" data-filename="0.hex" onclick="selectFilename(this)">0 (BYPASS)</button>
                             <button class="filename-btn" data-filename="4.hex" onclick="selectFilename(this)">4 (Not Used)</button>
                         </div>
                         <br>
-                        ▶ = switch up, ▸ = switch mid, ▷ = switch down
+                        ⬆ = switch up, ◉ = switch mid, ⬇ = switch down
                     </div>
                 </div>
             </div>
@@ -139,7 +145,7 @@
 
         <div class="instructions-section">
             <h3 onclick="toggleInstructions()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
-                <span id="instructionsToggle">▶</span> Instructions
+                <span id="instructionsToggle">▶</span> Instructions & Help
             </h3>
             <div id="instructionsContent" class="instructions-content collapsed">
                 <div class="instructions-text">
@@ -158,6 +164,7 @@
                         <li><i>Open the <b>Hardware Options</b> section to <b>Select Output Directory</b> button to specify the path to your Sandbox (typically /SANDBOX-FV1).</i></li>
                         <li><i>Use the <b>Filename / Toggle Position</b> buttons to select the destination slot on your hardware device</i></li>
                         <li><i>Press the <b>Download HEX</b> button to save your algorithm to the Sandbox hardware unit</i></li>
+                        <li><i>Press the <b>Clear Hardware</b> button to send a clear message to the Sandbox hardware unit and return to normal operation. Any programs saved to the Sandbox hardware will remain, but the hardware will not attempt to re-program those slots at boot.</i></li>
                     </ul>
 
                     <h4>Troubleshooting</h4>
@@ -166,6 +173,7 @@
                         <li><i>File transfer problems</i> - ensure proper directory permissions</li>
                         <li><i>Assembly errors</i> - check syntax and register usage</li>
                         <li><i>Connection issues</i> - verify USB cable and folder selection</li>
+                        <li><i>Hardware update / flash errors</i> - use <b>Hardware Options - Select Serial Port</b> to view debug information from the update process</li>
                     </ul>
 
                     <h4>What do these Options do?</h4>
@@ -175,11 +183,12 @@
                         <li>Large editor window: <i>Expands editor text area to show more instructions</i></li>
                         <li>Enable dark mode: <i>Use dark colour theme, follows system theme</i></li>
                         <li>Show editor mini-map: <i>Show a small navigation map in editor</i></li>
-                        <li>Show full build results: <i>Display more detailed error information/i></li>
+                        <li>Show full build results: <i>Display more detailed error information</i></li>
                     </ul>
                     <ul>
                         <h3>Hardware Options</h3>
-                        <li>Select Output Directory: <i>Specify the folder location of your Sandbox hardware (typically /SANDOX-FV1)</i></li>
+                        <li>Select Output Directory: <i>Specify the folder location of your Sandbox hardware (typically /SANDBOX-FV1)</i></li>
+                        <li>Select Serial Port: <i>Open Sandbox serial port to allow hardware debugging information</i></li>
                         <li>Filename / Toggle Position: <i>Select the destination slot on your hardware device</i></li>
                     </ul>
                 </div>

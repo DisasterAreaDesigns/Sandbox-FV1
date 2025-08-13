@@ -1,3 +1,4 @@
+/* Base Styles */
 body {
     font-family: Arial, sans-serif;
     max-width: 1200px;
@@ -13,58 +14,42 @@ body {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* Typography */
 h1 {
     color: #333;
     margin-bottom: 30px;
 }
 
-.input-section, .output-section {
-    margin-bottom: 20px;
+h2, h3 {
+    color: #333;
 }
 
-textarea {
-    width: 100%;
-    height: 300px;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    border: 1px solid #ddd;
-    padding: 10px;
-    border-radius: 4px;
-}
-
-/*.editor-container {
-    position: relative;
+/* Header Bar */
+.header-bar {
     display: flex;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    overflow: hidden;
-}*/
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
 
-/*.line-numbers {
-    background-color: #f8f8f8;
-    color: #999;
-    font-family: 'Courier New', monospace;
-    font-size: 14px; /* Match textarea font size */
-    padding: 10px 5px;
-    text-align: right;
-    user-select: none;
-    line-height: 1.5; /* Match textarea line height */
-    overflow: hidden;
-    white-space: pre;
-    height: 300px; /* Match textarea height */
-}*/
-
-/*.editor-container textarea {
-    border: none;
-    flex: 1;
-    line-height: 1.5;
-    font-size: 14px;
-    padding: 10px;
+.header-bar h1 {
     margin: 0;
-}*/
+    font-size: 28px;
+}
 
-/* Ensure the editor container takes full width and auto-height */
-  .editor-container {
+.header-bar .build {
+    font-size: 16px;
+    color: #666;
+    margin-left: 8px;
+}
+
+.app-icon {
+    height: 96px;
+    width: auto;
+}
+
+/* Monaco Editor */
+.editor-container {
     resize: both;
     overflow: auto;
     border: 1px solid #ccc;
@@ -72,30 +57,77 @@ textarea {
     min-width: 300px;
     max-height: 100vh;
     max-width: 100%;
-  }
-
-/* Monaco injects styles but we help ensure visibility */
-#editor {
-  width: 100%;
-  height: 400px;
-  border: 1px solid #ccc;
-  font-family: monospace;
 }
 
-/* Instructions section styles */
+#editor {
+    width: 100%;
+    height: 400px;
+    border: 1px solid #ccc;
+    font-family: monospace;
+}
+
+/* Collapsible Sections - Standardized */
+.editor-options-section,
+.hardware-options-section,
+.output-text-section,
 .instructions-section {
     margin-bottom: 20px;
 }
 
+.editor-options-section h3,
+.hardware-options-section h3,
+.output-text-section h3,
+.instructions-section h3 {
+    margin-bottom: 10px;
+    font-size: 18px;
+    color: #333;
+    cursor: pointer;
+    user-select: none;
+}
+
+.editor-options-content,
+.hardware-options-content,
+.output-content,
 .instructions-content {
     overflow: hidden;
     transition: max-height 0.3s ease-out;
-    max-height: 1000px; /* Large enough to show all content when expanded */
+    max-height: 1000px;
 }
 
+.editor-options-content.collapsed,
+.hardware-options-content.collapsed,
+.output-content.collapsed,
 .instructions-content.collapsed {
     max-height: 0;
-    /*transition: max-height 0.3s ease-in;*/
+}
+
+/* Section Content */
+.editor-help-text {
+    color: #888;
+    font-size: 13px;
+    padding-top: 12px;
+    padding-left: 4px;
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+.shortcut {
+    margin-right: 20px;
+    white-space: nowrap;
+}
+
+.options,
+.output-controls,
+.download-buttons {
+    padding: 15px;
+    background-color: #f8f8f8;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.options label {
+    margin-right: 20px;
+    display: inline-block;
 }
 
 .instructions-text {
@@ -111,7 +143,12 @@ textarea {
     margin-bottom: 0;
 }
 
+/* File Input */
+.file-input {
+    margin-bottom: 20px;
+}
 
+/* Buttons */
 button {
     background-color: #4CAF50;
     color: white;
@@ -133,6 +170,65 @@ button:disabled {
     cursor: not-allowed;
 }
 
+/* Button Grid for Filename Selection */
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.filename-btn {
+    background-color: #ccc;
+    color: #333;
+    border: none;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.filename-btn.selected {
+    background-color: #4caf50;
+    color: white;
+}
+
+/* Text Areas and Output */
+textarea {
+    width: 100%;
+    height: 300px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+#output {
+    background-color: #f8f8f8;
+    white-space: pre-wrap;
+}
+
+#messages {
+    height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    margin: 10px 0;
+    background-color: #f8f8f8;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    display: block;
+    box-sizing: border-box;
+}
+
+/* Status Messages */
 .error {
     color: red;
     margin-top: 10px;
@@ -148,252 +244,105 @@ button:disabled {
     margin-top: 10px;
 }
 
-#output {
-    background-color: #f8f8f8;
-    white-space: pre-wrap;
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
 }
 
-.file-input {
-    margin-bottom: 20px;
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto;
+    padding: 20px;
+    border: none;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    animation: modalSlideIn 0.3s ease-out;
 }
 
-.options {
-    margin: 20px 0;
-    padding: 15px;
-    background-color: #f8f8f8;
-    border-radius: 4px;
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.options label {
-    margin-right: 20px;
-    display: inline-block;
-}
-
-.output-controls {
-    margin-bottom: 20px;
-    padding: 15px;
-    background-color: #f8f8f8;
-    border-radius: 4px;
-}
-
-.output-text-section {
-    margin-top: 20px;
-}
-
-.output-content {
-    transition: max-height 0.3s ease-out;
-    overflow: hidden;
-}
-
-.output-content.collapsed {
-    max-height: 0;
-}
-
-.output-content:not(.collapsed) {
-    max-height: 500px; /* Adjust as needed */
-}
-
-.output-text-section h3 {
-    margin-bottom: 10px;
-    font-size: 16px;
+.modal h3 {
+    margin-top: 0;
     color: #333;
 }
 
-#outputToggle {
-    display: inline-block;
-    transition: transform 0.3s ease;
-    margin-right: 8px;
+.modal-buttons {
+    text-align: right;
+    margin-top: 20px;
 }
 
-.output-content:not(.collapsed) ~ h3 #outputToggle {
-    transform: rotate(90deg);
-}
-
-.editor-help-text {
-  color: #888;
-  font-size: 13px;
-  padding-top: 12px;
-  padding-left: 4px;
-  margin-bottom: 8px;
-  font-style: italic;
-}
-
-.shortcut {
-  margin-right: 20px; /* space between items */
-  white-space: nowrap; /* keep them from breaking mid-shortcut */
-}
-
-.header-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.header-bar h1 {
-  margin: 0;
-  font-size: 28px;
-}
-
-.header-bar .build {
-  font-size: 16px;
-  color: #666;
-  margin-left: 8px;
-}
-
-.app-icon {
-  height: 96px;
-  width: auto;
-}
-
-/* style for example button grid */
-  .example-buttons {
-    margin-top: 10px;
-  }
-
-  .example-buttons span {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: bold;
-  }
-
-  .button-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    max-width: 600px;
-  }
-
-  .button-grid button {
-    padding: 12px;
-    font-size: 14px;
-    background-color: #4CAF50;
-    color: white;
+.modal-buttons button {
+    margin-left: 10px;
+    padding: 8px 16px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.3s ease;
-  }
-
-  .button-grid button:hover {
-    background-color: #45a049;
-  }
-
-  .button-grid .filename-btn {
-  background-color: #ccc;       /* Grayed-out default */
-  color: #333;
-  border: none;
-  padding: 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.2s;
+    font-size: 14px;
 }
 
-.filename-btn.selected {
-  background-color: #4caf50;    /* Green when selected */
-  color: white;
+.btn-primary {
+    background-color: #007bff;
+    color: white;
 }
 
-        /* Modal styles for prompts */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 10000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-        }
+.btn-primary:hover {
+    background-color: #0056b3;
+}
 
-        .modal-content {
-            background-color: #fefefe;
-            margin: 15% auto;
-            padding: 20px;
-            border: none;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            animation: modalSlideIn 0.3s ease-out;
-        }
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
 
-        @keyframes modalSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+.btn-secondary:hover {
+    background-color: #545b62;
+}
 
-        .modal h3 {
-            margin-top: 0;
-            color: #333;
-        }
+.btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
 
-        .modal-buttons {
-            text-align: right;
-            margin-top: 20px;
-        }
+.btn-danger:hover {
+    background-color: #c82333;
+}
 
-        .modal-buttons button {
-            margin-left: 10px;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
+.modal input[type="text"], .modal textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-top: 5px;
+    box-sizing: border-box;
+}
 
-        .btn-primary {
-            background-color: #007bff;
-            color: white;
-        }
+.modal label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
 
-        .btn-primary:hover {
-            background-color: #0056b3;
-        }
-
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background-color: #545b62;
-        }
-
-        .btn-danger {
-            background-color: #dc3545;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background-color: #c82333;
-        }
-
-        .modal input[type="text"], .modal textarea {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            margin-top: 5px;
-            box-sizing: border-box;
-        }
-
-        .modal label {
-            display: block;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-
-        /* Dark mode styles */
+/* Dark Mode Styles */
 body.dark-mode {
     background-color: #1a1a1a;
     color: #e0e0e0;
@@ -414,19 +363,17 @@ body.dark-mode .header-bar .build {
     color: #999;
 }
 
-body.dark-mode textarea {
+body.dark-mode textarea,
+body.dark-mode #output,
+body.dark-mode #messages {
     background-color: #1e1e1e;
     color: #d4d4d4;
     border-color: #444;
 }
 
-body.dark-mode #output {
-    background-color: #1e1e1e;
-    color: #d4d4d4;
-}
-
 body.dark-mode .options,
-body.dark-mode .output-controls {
+body.dark-mode .output-controls,
+body.dark-mode .download-buttons {
     background-color: #333;
 }
 
@@ -471,7 +418,7 @@ body.dark-mode footer a {
     color: #14a1a6;
 }
 
-/* Modal dark mode */
+/* Modal Dark Mode */
 body.dark-mode .modal-content {
     background-color: #2a2a2a;
     color: #e0e0e0;
@@ -488,7 +435,6 @@ body.dark-mode .modal textarea {
     border-color: #444;
 }
 
-/* Modal button colors in dark mode */
 body.dark-mode .btn-primary {
     background-color: #0d7377;
     border: 1px solid #0a5d61;
@@ -514,84 +460,4 @@ body.dark-mode .btn-danger {
 
 body.dark-mode .btn-danger:hover {
     background-color: #cc4444;
-}
-
-/* Additional styles for FV-1 layout to match FXCore */
-
-/* Editor Options Section */
-.editor-options-section {
-    margin-bottom: 20px;
-}
-
-.editor-options-content {
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-    max-height: 1000px; /* Large enough to show all content when expanded */
-}
-
-.editor-options-content.collapsed {
-    max-height: 0;
-}
-
-/* Hardware Options Section */
-.hardware-options-section {
-    margin-bottom: 20px;
-}
-
-.hardware-options-content {
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-    max-height: 1000px; /* Large enough to show all content when expanded */
-}
-
-.hardware-options-content.collapsed {
-    max-height: 0;
-}
-
-/* Messages area */
-#messages {
-    height: 200px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 10px;
-    margin: 10px 0;
-    background-color: #f8f8f8;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    display: block;
-    box-sizing: border-box;
-}
-
-/* Download buttons section */
-.download-buttons {
-    margin-bottom: 20px;
-    padding: 15px;
-    background-color: #f8f8f8;
-    border-radius: 4px;
-}
-
-.download-buttons button {
-    margin-right: 10px;
-    margin-bottom: 5px;
-}
-
-/* Dark mode additions for new sections */
-body.dark-mode .editor-options-section h3,
-body.dark-mode .hardware-options-section h3 {
-    color: #e0e0e0;
-}
-
-body.dark-mode .download-buttons {
-    background-color: #333;
-}
-
-body.dark-mode #messages {
-    background-color: #1e1e1e;
-    color: #d4d4d4;
-    border-color: #444;
 }

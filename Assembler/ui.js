@@ -7,8 +7,13 @@ async function selectOutputDirectory() {
         if ('showDirectoryPicker' in window) {
             outputDirectoryHandle = await window.showDirectoryPicker();
             document.getElementById('outputDirDisplay').textContent = `Selected: ${outputDirectoryHandle.name}`;
+            const outputDirDisplay = document.getElementById('outputDirDisplay');
+            outputDirDisplay.style.color = '#28a745'; // Green color for connected
             
             debugLog('Output directory selected successfully', 'success');
+            
+            // Update clear hardware button state
+            updateClearHardwareButton();
             
             // Try to find and read the hardware identifier JSON file
             // Make sure we have the handle before calling this
@@ -22,6 +27,13 @@ async function selectOutputDirectory() {
         if (err.name !== 'AbortError') {
             debugLog('Error selecting directory: ' + err.message, 'errors');
         }
+    }
+}
+
+function updateClearHardwareButton() {
+    const clearHardwareBtn = document.getElementById('clearHardwareBtn');
+    if (clearHardwareBtn) {
+        clearHardwareBtn.disabled = !outputDirectoryHandle;
     }
 }
 
@@ -108,6 +120,10 @@ function revertToDefaultDirectory() {
     
     // Update the UI to show no directory selected
     document.getElementById('outputDirDisplay').textContent = 'No directory selected, using default directory';
+    document.getElementById('outputDirDisplay').style.color = '#666';
+    
+    // Update clear hardware button state
+    updateClearHardwareButton();
     
     // Disable the download buttons since we need a filename selected
     document.getElementById('downloadHexBtn').disabled = true;
@@ -147,6 +163,147 @@ function displayHardwareInfo(hardwareInfo, filename) {
     }
     
     debugLog(infoText, 'success');
+}
+
+async function clearHardware() {
+    // Check if directory is selected, if not do nothing
+    if (!outputDirectoryHandle || !('showDirectoryPicker' in window)) {
+        debugLog('No output directory selected - hardware clear cancelled', 'errors');
+        return;
+    }
+    
+    const emptyHex = ""; // Zero bytes - empty hex file
+    
+    // List of hex files to create for FV-1: 0.hex through 7.hex
+    const hexFiles = [];
+    
+    // Add 0-7 for FV-1 (8 program slots)
+    for (let i = 0; i <= 7; i++) {
+        hexFiles.push(`${i}.hex`);
+    }
+    
+    try {
+        let successCount = 0;
+        let errorCount = 0;
+        let skippedCount = 0;
+        
+        // Check each file and only create empty versions if non-zero size files exist
+        for (const filename of hexFiles) {
+            try {
+                // Check if file exists and get its size
+                let shouldClear = false;
+                try {
+                    const existingFileHandle = await outputDirectoryHandle.getFileHandle(filename);
+                    const existingFile = await existingFileHandle.getFile();
+                    
+                    // Only clear if file exists and has non-zero size
+                    if (existingFile.size > 0) {
+                        shouldClear = true;
+                    }
+                } catch (err) {
+                    // File doesn't exist, skip it
+                    skippedCount++;
+                    continue;
+                }
+                
+                if (shouldClear) {
+                    const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
+                        create: true
+                    });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(emptyHex);
+                    await writable.close();
+                    successCount++;
+                } else {
+                    skippedCount++;
+                }
+                
+            } catch (err) {
+                debugLog(`Error processing ${filename}: ${err.message}`, 'errors');
+                errorCount++;
+            }
+        }
+        
+        // Clear messages area
+        document.getElementById('messages').innerHTML = '';
+        
+        // Report results
+        if (errorCount === 0 && successCount > 0) {
+            debugLog(`Successfully cleared ${successCount} hex files (${skippedCount} skipped) - hardware cleared`, 'success');
+        } else if (successCount > 0) {
+            debugLog(`Cleared ${successCount} hex files with ${errorCount} errors (${skippedCount} skipped) - hardware partially cleared`, 'success');
+        } else if (skippedCount > 0) {
+            debugLog(`No files needed clearing - ${skippedCount} files were empty or non-existent`, 'errors');
+        } else {
+            debugLog('No hex files found to clear', 'errors');
+        }
+        
+    } catch (err) {
+        debugLog('Error during hardware clear: ' + err.message, 'errors');
+    }
+}
+
+async function serialConnect() {
+    console.log('Serial connect initiated');
+    try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        debugLog("Serial port connected", "serial");
+        
+        // Update the display - simplified
+        const portDisplay = document.getElementById('serialPortDisplay');
+        portDisplay.textContent = 'Connected';
+        portDisplay.style.color = '#28a745'; // Green color for connected
+        
+        const decoder = new TextDecoderStream();
+        port.readable.pipeTo(decoder.writable);
+        const reader = decoder.readable.getReader();
+        
+        // Buffer to accumulate partial lines
+        let buffer = '';
+        
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+                debugLog("Serial reader closed", "serial");
+                // Update display when disconnected
+                portDisplay.textContent = 'Disconnected';
+                portDisplay.style.color = '#dc3545'; // Red color for disconnected
+                
+                // Process any remaining data in buffer
+                if (buffer.trim()) {
+                    debugLog(buffer.trim(), "serial");
+                }
+                break;
+            }
+            
+            if (value) {
+                // Add new data to buffer
+                buffer += value;
+                
+                // Process complete lines
+                const lines = buffer.split('\n');
+                
+                // Keep the last incomplete line in the buffer
+                buffer = lines.pop() || '';
+                
+                // Process all complete lines
+                lines.forEach(line => {
+                    const trimmedLine = line.replace(/\r$/, '').trim(); // Remove \r and whitespace
+                    if (trimmedLine) {
+                        debugLog(trimmedLine, "serial");
+                    }
+                });
+            }
+        }
+    } catch (err) {
+        debugLog(`Error opening serial port: ${err.message}`, "serial");
+        
+        // Update display on error
+        const portDisplay = document.getElementById('serialPortDisplay');
+        portDisplay.textContent = `Error: ${err.message}`;
+        portDisplay.style.color = '#dc3545'; // Red color for error
+    }
 }
 
 let selectedFilename = null;
@@ -772,4 +929,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (defaultButton) {
         selectFilename(defaultButton);
     }
+    
+    // Initialize clear hardware button state
+    updateClearHardwareButton();
 });

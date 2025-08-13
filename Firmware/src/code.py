@@ -167,6 +167,12 @@ def process_and_program_hex_file(filename):
                 elif record_type == 1:
                     break
         
+        # Check if the hex file contained any data
+        if len(all_bytes) == 0:
+            print_serial("Ignoring zero-byte hex file: {}".format(filename))
+            set_led_color(COLOR_OFF)
+            return True  # Return True so file gets marked as processed
+        
         # Determine start address based on filename
         base_filename = filename.split('/')[-1]
         if base_filename in FILE_ADDRESS_MAP:
