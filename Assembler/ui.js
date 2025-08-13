@@ -8,7 +8,7 @@ async function selectOutputDirectory() {
             outputDirectoryHandle = await window.showDirectoryPicker();
             document.getElementById('outputDirDisplay').textContent = `Selected: ${outputDirectoryHandle.name}`;
             
-            showMessage('Output directory selected successfully', 'success');
+            debugLog('Output directory selected successfully', 'success');
             
             // Try to find and read the hardware identifier JSON file
             // Make sure we have the handle before calling this
@@ -16,21 +16,18 @@ async function selectOutputDirectory() {
                 await readHardwareIdentifier();
             }
         } else {
-            showMessage('Directory selection not supported in this browser', 'error');
+            debugLog('Directory selection not supported in this browser', 'errors');
         }
     } catch (err) {
         if (err.name !== 'AbortError') {
-            showMessage('Error selecting directory: ' + err.message, 'error');
+            debugLog('Error selecting directory: ' + err.message, 'errors');
         }
     }
 }
 
 async function readHardwareIdentifier() {
     if (!outputDirectoryHandle) {
-        const messages = document.getElementById('messages');
-        const existingContent = messages.innerHTML;
-        const errorDiv = '<div class="error">No output directory selected</div>';
-        messages.innerHTML = existingContent + errorDiv;
+        debugLog('No output directory selected', 'errors');
         return;
     }
 
@@ -88,26 +85,20 @@ async function readHardwareIdentifier() {
             } else {
                 // Hardware device doesn't match - revert to default downloads
                 revertToDefaultDirectory();
-                const messages = document.getElementById('messages');
-                const errorDiv = '<div class="error">Hardware device not found, reverting to default directory</div>';
-                messages.innerHTML = errorDiv;
+                debugLog('Hardware device not found, reverting to default directory', 'errors');
                 return;
             }
         } else {
             // No hardware identifier found - revert to default downloads
             revertToDefaultDirectory();
-            const messages = document.getElementById('messages');
-            const errorDiv = '<div class="error">Hardware device not found, reverting to default directory</div>';
-            messages.innerHTML = errorDiv;
+            debugLog('Hardware device not found, reverting to default directory', 'errors');
             return;
         }
         
     } catch (err) {
         // Error reading hardware identifier - revert to default downloads
         revertToDefaultDirectory();
-        const messages = document.getElementById('messages');
-        const errorDiv = `<div class="error">Hardware device not found, reverting to default directory</div>`;
-        messages.innerHTML = errorDiv;
+        debugLog('Hardware device not found, reverting to default directory', 'errors');
     }
 }
 
@@ -124,44 +115,38 @@ function revertToDefaultDirectory() {
 }
 
 function displayHardwareInfo(hardwareInfo, filename) {
-    const messages = document.getElementById('messages');
-    const existingContent = messages.innerHTML;
-    
-    let infoHtml = '<div class="success hardware-info">';
-    infoHtml += `<strong>Hardware Identifier Found (${filename}):</strong><br>`;
+    let infoText = `Hardware Identifier Found (${filename}):\n`;
     
     if (hardwareInfo.device_type) {
-        infoHtml += `Device Type: <strong>${hardwareInfo.device_type}</strong><br>`;
+        infoText += `Device Type: ${hardwareInfo.device_type}\n`;
     }
     
     if (hardwareInfo.firmware_version) {
-        infoHtml += `Firmware Version: <strong>${hardwareInfo.firmware_version}</strong><br>`;
+        infoText += `Firmware Version: ${hardwareInfo.firmware_version}\n`;
     }
     
     if (hardwareInfo.device_id) {
-        infoHtml += `Device ID: <strong>${hardwareInfo.device_id}</strong><br>`;
+        infoText += `Device ID: ${hardwareInfo.device_id}\n`;
     }
     
     if (hardwareInfo.hardware_info) {
         if (hardwareInfo.hardware_info.manufacturer) {
-            infoHtml += `Manufacturer: <strong>${hardwareInfo.hardware_info.manufacturer}</strong><br>`;
+            infoText += `Manufacturer: ${hardwareInfo.hardware_info.manufacturer}\n`;
         }
         if (hardwareInfo.hardware_info.model) {
-            infoHtml += `Model: <strong>${hardwareInfo.hardware_info.model}</strong><br>`;
+            infoText += `Model: ${hardwareInfo.hardware_info.model}\n`;
         }
         if (hardwareInfo.hardware_info.serial_number) {
-            infoHtml += `Serial Number: <strong>${hardwareInfo.hardware_info.serial_number}</strong><br>`;
+            infoText += `Serial Number: ${hardwareInfo.hardware_info.serial_number}\n`;
         }
     }
     
     if (hardwareInfo.timestamp) {
         const date = new Date(hardwareInfo.timestamp);
-        infoHtml += `Last Updated: <strong>${date.toLocaleString()}</strong><br>`;
+        infoText += `Last Updated: ${date.toLocaleString()}\n`;
     }
     
-    infoHtml += '</div>';
-    
-    messages.innerHTML = existingContent + infoHtml;
+    debugLog(infoText, 'success');
 }
 
 let selectedFilename = null;
@@ -185,7 +170,6 @@ function selectFilename(btn) {
     document.getElementById('downloadBinBtn').disabled = !hasAssembly;
 }
 
-// New function to clear editor content with three-choice prompt
 async function clearEditor() {
     if (hasEditorContent()) {
         const choice = await showThreeChoiceDialog(
@@ -204,7 +188,9 @@ async function clearEditor() {
         // If choice === 'discard', just proceed with clearing
     }
 
-    if (editor) {
+    if (window.resetEditorToPlaceholder) {
+        window.resetEditorToPlaceholder();
+    } else if (editor) {
         editor.setValue('');
     }
     
@@ -229,17 +215,16 @@ function clearSource() {
     document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
     
-    showMessage('Source code cleared', 'success');
+    debugLog('Source code cleared', 'success');
 }
 
 function assemble() {
-    // const source = document.getElementById('sourceCode').value;
     const source = editor.getValue();
     const clamp = document.getElementById('clampOption').checked;
     const spinReals = document.getElementById('spinRealsOption').checked;
 
     if (!source.trim()) {
-        showMessage('Please enter some assembly code', 'error');
+        debugLog('Please enter some assembly code', 'errors');
         return;
     }
 
@@ -249,17 +234,9 @@ function assemble() {
     });
     const success = assembler.parse();
 
-    // Display messages
-    let messages = '';
-    if (assembler.warnings.length > 0) {
-        messages += '<div class="warning">Warnings:<br>' + assembler.warnings.join('<br>') + '</div>';
-    }
-    if (assembler.errors.length > 0) {
-        messages += '<div class="error">Errors:<br>' + assembler.errors.join('<br>') + '</div>';
-    }
-
     if (success) {
         assembler.generateMachineCode();
+        assembler.printCodeListing(); // Add this line - only print listing after successful assembly
         assembledData = assembler.program;
 
         const hex = assembler.toIntelHex();
@@ -268,27 +245,25 @@ function assemble() {
         // Get assembly statistics
         const stats = assembler.getAssemblyStats();
 
-        // Enable download buttons if we have assembled data and a filename is selected
-        // Enable download buttons if we have assembled data and a filename is selected
+        // Enable download buttons
         const hasFilename = selectedFilename !== null;
         const hasAssembly = assembledData !== null && hex.trim() !== '';
         document.getElementById('downloadHexBtn').disabled = !(hasFilename && hasAssembly);
         document.getElementById('downloadBinBtn').disabled = !(hasFilename && hasAssembly);
-        document.getElementById('downloadCHeaderBtn').disabled = !hasAssembly; // Only needs assembly data, not filename
-        if (messages === '') {
-            messages = '<div class="success">Assembly successful!</div>';
+        document.getElementById('downloadCHeaderBtn').disabled = !hasAssembly;
+        
+        if (assembler.warnings.length === 0 && assembler.errors.length === 0) {
+            debugLog('Assembly successful!', 'success');
         }
 
         // Add assembly statistics
-        messages += `<div class="info">Instructions: ${stats.nonNopInstructions} (${stats.totalInstructions} total including padding) | Checksum: 0x${stats.checksum.toString(16).toUpperCase().padStart(4, '0')}</div>`;
+        debugLog(`Instructions: ${stats.nonNopInstructions} (${stats.totalInstructions} total including padding) | Checksum: 0x${stats.checksum.toString(16).toUpperCase().padStart(4, '0')}`, 'success');
     } else {
         document.getElementById('output').value = '';
         document.getElementById('downloadHexBtn').disabled = true;
         document.getElementById('downloadBinBtn').disabled = true;
         assembledData = null;
     }
-
-    document.getElementById('messages').innerHTML = messages;
 }
 
 function clearAssembly() {
@@ -298,11 +273,14 @@ function clearAssembly() {
     document.getElementById('downloadBinBtn').disabled = true;
     document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
-    showMessage('Assembly output cleared', 'success');
+    debugLog('Assembly output cleared', 'success');
 }
 
-// Check if editor has content
+// Check if editor has content (this will be overridden by monaco.js)
 function hasEditorContent() {
+    if (window.hasEditorContent) {
+        return window.hasEditorContent();
+    }
     return editor && editor.getValue().trim().length > 0;
 }
 
@@ -443,16 +421,29 @@ function toggleEditorHeight() {
     }
 }
 
+function toggleDebugPreset() {
+    const debugEnabled = document.getElementById('debugToggle').checked;
+    
+    if (debugEnabled) {
+        DEBUG.setPreset('basic');
+        debugLog('Debug mode enabled - showing full build results', 'info');
+    } else {
+        // DEBUG.setPreset('clean');
+        DEBUG.reset();
+        debugLog('Debug mode disabled - showing minimal output', 'info');
+    }
+}
+
 function showMessage(msg, type) {
-    const className = type === 'error' ? 'error' : 'success';
-    document.getElementById('messages').innerHTML = `<div class="${className}">${msg}</div>`;
+    const className = type === 'error' ? 'errors' : 'success';
+    debugLog(msg, className);
 }
 
 async function downloadHex() {
     const hex = document.getElementById('output').value;
 
     if (!selectedFilename) {
-        showMessage('Please select a filename first.', 'error');
+        debugLog('Please select a filename first.', 'errors');
         return;
     }
 
@@ -466,25 +457,24 @@ async function downloadHex() {
             const writable = await fileHandle.createWritable();
             await writable.write(hex);
             await writable.close();
-            showMessage(`File saved as ${filename} in selected directory`, 'success');
+            debugLog(`File saved as ${filename} in selected directory`, 'success');
         } catch (err) {
-            showMessage('Error saving to directory: ' + err.message, 'error');
+            debugLog('Error saving to directory: ' + err.message, 'errors');
             // Fallback to regular download
             downloadFile(filename, hex, 'text/plain');
         }
     } else {
         // No directory selected, use normal browser download
         downloadFile(filename, hex, 'text/plain');
-        showMessage(`File downloaded as ${filename} to default downloads folder`, 'success');
+        debugLog(`File downloaded as ${filename} to default downloads folder`, 'success');
     }
 }
-
 
 async function downloadBinary() {
     if (!assembledData) return;
 
     if (!selectedFilename) {
-        showMessage('Please select a filename first.', 'error');
+        debugLog('Please select a filename first.', 'errors');
         return;
     }
 
@@ -501,9 +491,9 @@ async function downloadBinary() {
             const writable = await fileHandle.createWritable();
             await writable.write(assembledData.slice(0, 512));
             await writable.close();
-            showMessage(`Binary file saved as ${filename} in selected directory`, 'success');
+            debugLog(`Binary file saved as ${filename} in selected directory`, 'success');
         } catch (err) {
-            showMessage('Error saving binary to directory: ' + err.message, 'error');
+            debugLog('Error saving binary to directory: ' + err.message, 'errors');
             // Fallback to regular download
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -519,7 +509,7 @@ async function downloadBinary() {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
-        showMessage(`Binary file downloaded as ${filename} to default downloads folder`, 'success');
+        debugLog(`Binary file downloaded as ${filename} to default downloads folder`, 'success');
     }
 }
 
@@ -542,7 +532,7 @@ async function downloadCHeader() {
     const cHeader = assembler.toCHeader(arrayName);
     
     downloadFile(filename, cHeader, 'text/plain');
-    showMessage(`C header downloaded as ${filename}`, 'success');
+    debugLog(`C header downloaded as ${filename}`, 'success');
 }
 
 function downloadFile(filename, content, mimeType) {
@@ -584,6 +574,33 @@ function toggleInstructions() {
     }
 }
 
+// Toggle functions for new sections
+function toggleEditorOptions() {
+    const editorOptionsContent = document.getElementById('editorOptionsContent');
+    const editorOptionsToggle = document.getElementById('editorOptionsToggle');
+
+    if (editorOptionsContent.classList.contains('collapsed')) {
+        editorOptionsContent.classList.remove('collapsed');
+        editorOptionsToggle.textContent = '▼';
+    } else {
+        editorOptionsContent.classList.add('collapsed');
+        editorOptionsToggle.textContent = '▶';
+    }
+}
+
+function toggleHardwareOptions() {
+    const hardwareOptionsContent = document.getElementById('hardwareOptionsContent');
+    const hardwareOptionsToggle = document.getElementById('hardwareOptionsToggle');
+
+    if (hardwareOptionsContent.classList.contains('collapsed')) {
+        hardwareOptionsContent.classList.remove('collapsed');
+        hardwareOptionsToggle.textContent = '▼';
+    } else {
+        hardwareOptionsContent.classList.add('collapsed');
+        hardwareOptionsToggle.textContent = '▶';
+    }
+}
+
 async function loadExample(exampleName) {
     // Check for unsaved changes first
     if (hasEditorContent()) {
@@ -604,6 +621,7 @@ async function loadExample(exampleName) {
     }
 
     if (exampleName && examples[exampleName]) {
+        editor.updateOptions({ readOnly: false }); // Make sure it's editable
         editor.setValue(examples[exampleName]);
         editor.setScrollTop(0);
         editor.setScrollLeft(0);
@@ -613,7 +631,7 @@ async function loadExample(exampleName) {
         document.getElementById('downloadBinBtn').disabled = true;
         document.getElementById('downloadCHeaderBtn').disabled = true;
         assembledData = null;
-        showMessage('Example loaded successfully', 'success');
+        debugLog('Example loaded successfully', 'success');
     }
 }
 
@@ -625,6 +643,7 @@ async function loadFile() {
 
     const reader = new FileReader();
     reader.onload = function(e) {
+        editor.updateOptions({ readOnly: false }); // Make sure it's editable
         editor.setValue(e.target.result);
         editor.setScrollTop(0);
         editor.setScrollLeft(0);
@@ -634,11 +653,11 @@ async function loadFile() {
         document.getElementById('downloadBinBtn').disabled = true;
         document.getElementById('downloadCHeaderBtn').disabled = true;
         assembledData = null;
-        showMessage('File loaded successfully', 'success');
+        debugLog('File loaded successfully', 'success');
         document.getElementById('exampleSelect').value = '';
     };
     reader.onerror = function() {
-        showMessage('Error reading file', 'error');
+        debugLog('Error reading file', 'errors');
     };
     reader.readAsText(file);
 }
@@ -731,6 +750,11 @@ window.addEventListener('beforeunload', function(e) {
 
 // Initialize hidden checkboxes and file input handler
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize debug system
+    DEBUG.reset();
+    DEBUG.showConfig();
+    // DEBUG.setPreset('clean'); // Start with minimal output
+    
     // Add event listener for file input change
     document.getElementById('fileInput').addEventListener('change', loadFile);
 
@@ -743,7 +767,7 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     document.body.appendChild(hiddenCheckboxes);
 
-        // Select "3.hex" by default
+    // Select "3.hex" by default
     const defaultButton = document.querySelector('.filename-btn[data-filename="3.hex"]');
     if (defaultButton) {
         selectFilename(defaultButton);
