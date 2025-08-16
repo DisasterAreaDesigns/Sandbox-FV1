@@ -3,6 +3,7 @@ let assembledData = null;
 let outputDirectoryHandle = null;
 let preferredStartDirectory = 'downloads';
 let projectDirectoryHandle = null;
+let selectedFilename = null;
 
 async function selectOutputDirectory() {
     try {
@@ -17,6 +18,8 @@ async function selectOutputDirectory() {
             
             // Update clear hardware button state
             updateClearHardwareButton();
+
+            updateHardwareConnectionStatus();
             
             // Try to find and read the hardware identifier JSON file
             // Make sure we have the handle before calling this
@@ -31,6 +34,30 @@ async function selectOutputDirectory() {
             debugLog('Error selecting directory: ' + err.message, 'errors');
         }
     }
+}
+
+// update hardware connection on main page
+function updateHardwareConnectionStatus() {
+    const statusElement = document.getElementById('hardwareConnectionStatus');
+    if (!statusElement) return;
+
+    let statusText = 'No directory selected';
+    let statusColor = '#666';
+
+    const filenameWithoutExt = selectedFilename.slice(0, -4);
+    const targetText = `Program Slot ${filenameWithoutExt}`;
+    const serialConnected = document.getElementById('serialPortDisplay').textContent.includes('Connected');
+
+    // Check file mode connection (output directory)
+    if (outputDirectoryHandle) {
+        statusText = `${outputDirectoryHandle.name}; ${targetText}; ${serialConnected ? 'Serial connected' : ''}`;
+        statusColor = '#28a745'; // Green
+    } else {
+        statusText = `No directory selected; ${targetText}; ${serialConnected ? 'Serial connected' : ''}`;
+        }
+
+    statusElement.textContent = statusText;
+    statusElement.style.color = statusColor;
 }
 
 function updateClearHardwareButton() {
@@ -278,10 +305,12 @@ async function serialConnect() {
         await port.open({ baudRate: 115200 });
         debugLog("Serial port connected", "serial");
         
+        
         // Update the display - simplified
         const portDisplay = document.getElementById('serialPortDisplay');
         portDisplay.textContent = 'Connected';
         portDisplay.style.color = '#28a745'; // Green color for connected
+        updateHardwareConnectionStatus(); // fire this to catch the change
         
         const decoder = new TextDecoderStream();
         port.readable.pipeTo(decoder.writable);
@@ -297,7 +326,7 @@ async function serialConnect() {
                 // Update display when disconnected
                 portDisplay.textContent = 'Disconnected';
                 portDisplay.style.color = '#dc3545'; // Red color for disconnected
-                
+                updateHardwareConnectionStatus(); // fire this to catch the change
                 // Process any remaining data in buffer
                 if (buffer.trim()) {
                     debugLog(buffer.trim(), "serial");
@@ -331,10 +360,13 @@ async function serialConnect() {
         const portDisplay = document.getElementById('serialPortDisplay');
         portDisplay.textContent = `Error: ${err.message}`;
         portDisplay.style.color = '#dc3545'; // Red color for error
+        updateHardwareConnectionStatus(); // fire this to catch the change
     }
+
+
 }
 
-let selectedFilename = null;
+
 
 function selectFilename(btn) {
     // Deselect all buttons
@@ -1060,29 +1092,29 @@ window.addEventListener('beforeunload', function(e) {
     }
 });
 
-// Initialize UI when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize debug system
-    DEBUG.reset();
+// // Initialize UI when DOM is loaded
+// document.addEventListener('DOMContentLoaded', function() {
+//     // Initialize debug system
+//     DEBUG.reset();
     
-    // Add event listener for file input change
-    // document.getElementById('fileInput').addEventListener('change', loadFile);
+//     // Add event listener for file input change
+//     // document.getElementById('fileInput').addEventListener('change', loadFile);
 
-    // Add hidden checkboxes that the assembler expects
-    const hiddenCheckboxes = document.createElement('div');
-    hiddenCheckboxes.style.display = 'none';
-    hiddenCheckboxes.innerHTML = `
-        <input type="checkbox" id="clampOption">
-        <input type="checkbox" id="spinRealsOption">
-    `;
-    document.body.appendChild(hiddenCheckboxes);
+//     // Add hidden checkboxes that the assembler expects
+//     const hiddenCheckboxes = document.createElement('div');
+//     hiddenCheckboxes.style.display = 'none';
+//     hiddenCheckboxes.innerHTML = `
+//         <input type="checkbox" id="clampOption">
+//         <input type="checkbox" id="spinRealsOption">
+//     `;
+//     document.body.appendChild(hiddenCheckboxes);
 
-    // Select "3.hex" by default
-    const defaultButton = document.querySelector('.filename-btn[data-filename="3.hex"]');
-    if (defaultButton) {
-        selectFilename(defaultButton);
-    }
+//     // Select "3.hex" by default
+//     const defaultButton = document.querySelector('.filename-btn[data-filename="3.hex"]');
+//     if (defaultButton) {
+//         selectFilename(defaultButton);
+//     }
     
-    updateHardwareConnectionStatus();
-    updateDownloadButtonStates();
-});
+//     updateHardwareConnectionStatus();
+//     updateDownloadButtonStates();
+// });

@@ -131,18 +131,18 @@
                     <div style="margin-top: 10px;">
                         Filename / Toggle Position:
                         <span id="filenameLabel" style="font-weight: bold; margin-left: 5px; color: #333;">(none selected)</span>
-                        <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px;">
-                            <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">↑ 2 ↑</button>
-                            <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">↑ 6 ↓</button>
-                            <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">◉ 3 ↑</button>
-                            <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">◉ 7 ↓</button>
-                            <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">↓ 1 ↑</button>
-                            <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">↓ 5 ↓</button>
+                        <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 14px;margin-bottom: 14px;">
+                            <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">▲ 2 ▲</button>
+                            <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">▲ 6 ▼</button>
+                            <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">◉ 3 ▲</button>
+                            <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">◉ 7 ▼</button>
+                            <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">▼ 1 ▲</button>
+                            <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">▼ 5 ▼</button>
                             <button class="filename-btn" data-filename="0.hex" onclick="selectFilename(this)">0 (BYPASS)</button>
                             <button class="filename-btn" data-filename="4.hex" onclick="selectFilename(this)">4 (Not Used)</button>
                         </div>
                         <br>
-                        ↑ = switch up, ◉ = switch mid, ↓ = switch down
+                        ▲ = switch up, ◉ = switch mid, ▼ = switch down
                     </div>
                 </div>
             </div>
@@ -298,88 +298,88 @@
                 }
             }
 
-            // Download plain HEX function to match FXCore interface
-            async function downloadPlainHex() {
-                if (!assembledData) {
-                    debugLog('No assembled data available', 'errors');
-                    return false;
-                }
+            // // Download plain HEX function to match FXCore interface
+            // async function downloadPlainHex() {
+            //     if (!assembledData) {
+            //         debugLog('No assembled data available', 'errors');
+            //         return false;
+            //     }
 
-                const hex = document.getElementById('output').value;
+            //     const hex = document.getElementById('output').value;
                 
-                if (!hex || hex.trim() === '') {
-                    debugLog('No hex data to download', 'errors');
-                    return false;
-                }
+            //     if (!hex || hex.trim() === '') {
+            //         debugLog('No hex data to download', 'errors');
+            //         return false;
+            //     }
 
-                let defaultFilename = 'fv1_output.hex';
+            //     let defaultFilename = 'fv1_output.hex';
                 
-                // Try to use File System Access API first
-                if ('showSaveFilePicker' in window) {
-                    try {
-                        const fileHandle = await window.showSaveFilePicker({
-                            suggestedName: defaultFilename,
-                            types: [{
-                                description: 'Intel HEX files',
-                                accept: {
-                                    'application/octet-stream': ['.hex']
-                                }
-                            }]
-                        });
+            //     // Try to use File System Access API first
+            //     if ('showSaveFilePicker' in window) {
+            //         try {
+            //             const fileHandle = await window.showSaveFilePicker({
+            //                 suggestedName: defaultFilename,
+            //                 types: [{
+            //                     description: 'Intel HEX files',
+            //                     accept: {
+            //                         'application/octet-stream': ['.hex']
+            //                     }
+            //                 }]
+            //             });
                         
-                        const writable = await fileHandle.createWritable();
-                        await writable.write(hex);
-                        await writable.close();
+            //             const writable = await fileHandle.createWritable();
+            //             await writable.write(hex);
+            //             await writable.close();
                         
-                        debugLog('HEX file saved: ' + fileHandle.name, 'success');
-                        return true;
+            //             debugLog('HEX file saved: ' + fileHandle.name, 'success');
+            //             return true;
                         
-                    } catch (err) {
-                        if (err.name === 'AbortError') {
-                            return false; // User cancelled
-                        } else {
-                            debugLog('Error saving with file picker: ' + err.message, 'errors');
-                            // Fall back to blob download
-                        }
-                    }
-                }
+            //         } catch (err) {
+            //             if (err.name === 'AbortError') {
+            //                 return false; // User cancelled
+            //             } else {
+            //                 debugLog('Error saving with file picker: ' + err.message, 'errors');
+            //                 // Fall back to blob download
+            //             }
+            //         }
+            //     }
                 
-                // Fallback for browsers that don't support File System Access API
-                const browserSupported = await showConfirmDialog(
-                    'Download HEX File', 
-                    'Your browser doesn\'t support the advanced file picker. The file will be downloaded to your default downloads folder. Continue?'
-                );
+            //     // Fallback for browsers that don't support File System Access API
+            //     const browserSupported = await showConfirmDialog(
+            //         'Download HEX File', 
+            //         'Your browser doesn\'t support the advanced file picker. The file will be downloaded to your default downloads folder. Continue?'
+            //     );
                 
-                if (!browserSupported) return false;
+            //     if (!browserSupported) return false;
                 
-                // Always download as file (no hardware interaction)
-                downloadFile(defaultFilename, hex, 'application/octet-stream');
-                debugLog(`File downloaded as ${defaultFilename} to default downloads folder`, 'success');
-                return true;
-            }
+            //     // Always download as file (no hardware interaction)
+            //     downloadFile(defaultFilename, hex, 'application/octet-stream');
+            //     debugLog(`File downloaded as ${defaultFilename} to default downloads folder`, 'success');
+            //     return true;
+            // }
 
-            // Update hardware connection status
-            function updateHardwareConnectionStatus() {
-                const statusElement = document.getElementById('hardwareConnectionStatus');
-                if (!statusElement) return;
+            // // Update hardware connection status
+            // function updateHardwareConnectionStatus() {
+            //     const statusElement = document.getElementById('hardwareConnectionStatus');
+            //     if (!statusElement) return;
 
-                let statusText = 'No connection';
-                let statusColor = '#666';
+            //     let statusText = 'No connection';
+            //     let statusColor = '#666';
 
-                // Check file mode connection (output directory)
-                if (outputDirectoryHandle) {
-                    const filenameSelected = selectedFilename !== null;
-                    const slotDisplay = filenameSelected ? selectedFilename.replace('.hex', '') : 'none';
-                    statusText = `Directory: ${outputDirectoryHandle.name}, Slot: ${slotDisplay}`;
-                    statusColor = '#28a745'; // Green
-                } else {
-                    const slotDisplay = selectedFilename ? selectedFilename.replace('.hex', '') : 'none';
-                    statusText = `No directory, Slot: ${slotDisplay}`;
-                }
+            //     // Check file mode connection (output directory)
+            //     if (outputDirectoryHandle) {
+            //         const filenameSelected = selectedFilename !== null;
+            //         const slotDisplay = filenameSelected ? selectedFilename.replace('.hex', '') : 'none';
+            //         statusText = `Directory: ${outputDirectoryHandle.name}, Slot: ${slotDisplay}`;
+            //         statusColor = '#28a745'; // Green
+            //     } else {
+            //         const slotDisplay = selectedFilename ? selectedFilename.replace('.hex', '') : 'none';
+            //         statusText = `No directory, Slot: ${slotDisplay}`;
+            //     }
 
-                statusElement.textContent = statusText;
-                statusElement.style.color = statusColor;
-            }
+            //     statusElement.textContent = statusText;
+            //     statusElement.style.color = statusColor;
+            // }
 
             // Initialize the FV-1 assembler when the page loads
             document.addEventListener('DOMContentLoaded', function() {
@@ -404,7 +404,8 @@
                 }
 
                 updateHardwareConnectionStatus();
-
+                updateDownloadButtonStates();
+                
                 // Initialize user preferences
                 initializePreferences();
 

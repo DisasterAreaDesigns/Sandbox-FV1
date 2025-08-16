@@ -395,6 +395,23 @@ button:disabled {
     font-weight: bold;
 }
 
+.filename-btn {
+    background-color: #ccc !important;
+    color: #333 !important;
+    border: none;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: Arial, sans-serif !important;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.filename-btn.selected {
+    background-color: #4caf50 !important;
+    color: white !important;
+}
+
 .button-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
