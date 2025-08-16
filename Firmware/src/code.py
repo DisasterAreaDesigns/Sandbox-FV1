@@ -6,10 +6,10 @@ import digitalio
 import supervisor
 import neopixel
 
-# Set up I2C bus on GP4 (SDA) and GP5 (SCL)
+# Set up I2C bus on GP0 (SDA) and GP1 (SCL)
 i2c = busio.I2C(scl=board.GP1, sda=board.GP0)
 
-# Set up control pin (GP3) - keep HIGH by default, toggle LOW only during programming
+# Set up control pin (GP2) - keep HIGH by default, toggle LOW only during programming
 control_pin = digitalio.DigitalInOut(board.GP2)
 control_pin.direction = digitalio.Direction.OUTPUT
 control_pin.value = True  # Keep high by default
@@ -234,7 +234,7 @@ def process_and_program_hex_file(filename):
             expected_min_addr = 0x000
             expected_max_addr = 0xFFF
         else:
-            expected_lines = 513
+            expected_lines = 129
             expected_min_addr = 0x000
             expected_max_addr = 0x1FF
         
@@ -353,9 +353,8 @@ for file, addr in sorted_files:
     if file == "all.hex":
         print_serial("  {} -> 0x{:04X} (ENTIRE EEPROM - requires 1025 lines, 0x000-0xFFF)".format(file, addr))
     else:
-        print_serial("  {} -> 0x{:04X} (requires 513 lines, 0x000-0x1FF)".format(file, addr))
-
-print_serial("Default address for other files: 0x{:04X} (requires 513 lines, 0x000-0x1FF)".format(DEFAULT_START_ADDR))
+        print_serial("  {} -> 0x{:04X} (requires 129 lines, 0x000-0x1FF)".format(file, addr))
+print_serial("Default address for other files: 0x{:04X} (requires 129 lines, 0x000-0x1FF)".format(DEFAULT_START_ADDR))
 
 # Try to initialize I2C and detect EEPROM
 try:

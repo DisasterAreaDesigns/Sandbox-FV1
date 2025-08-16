@@ -256,7 +256,7 @@ h2 + div {
 .output-content {
     overflow: hidden;
     transition: max-height 0.3s ease-out;
-    max-height: 1000px;
+    max-height: 1500px;
 }
 
 /* All collapsed states */
@@ -286,11 +286,20 @@ h2 + div {
 }
 
 .instructions-text p {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .instructions-text p:last-child {
     margin-bottom: 0;
+}
+
+.instructions-text h4 {
+    margin-bottom: 5px;
+    /*margin-top: 0;*/
+/*    font-size: 16px;
+    font-weight: 400;
+    color: #333;
+    padding: 0;*/
 }
 
 .options {
@@ -771,65 +780,4 @@ body.dark-mode #messages::-webkit-scrollbar-thumb {
 
 body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
     background: #666;
-}
-
-/* Project folder button with optimized spacing and ellipsis */
-#projectFolderBtn,
-button#projectFolderBtn,
-.project-folder-button {
-    background-color: #4CAF50 !important;
-    color: white !important;
-    padding: 10px 12px !important; /* Reduced horizontal padding from 20px to 12px */
-    border: none !important;
-    border-radius: 4px !important;
-    cursor: pointer !important;
-    font-size: 16px !important;
-    font-family: 'League Spartan', sans-serif !important;
-    margin-left: 10px !important;
-    transition: background-color 0.3s ease !important;
-    min-width: 180px !important;
-    max-width: 180px !important;
-    text-align: center !important;
-    overflow: hidden !important;
-    white-space: nowrap !important;
-    text-overflow: ellipsis !important; /* CSS ellipsis for overflow */
-    display: inline-block !important;
-    vertical-align: middle !important;
-    box-sizing: border-box !important;
-    line-height: 1.2 !important;
-}
-
-#projectFolderBtn:hover,
-button#projectFolderBtn:hover,
-.project-folder-button:hover {
-    background-color: #45a049 !important;
-}
-
-#projectFolderBtn:disabled,
-button#projectFolderBtn:disabled,
-.project-folder-button:disabled {
-    background-color: #ccc !important;
-    cursor: not-allowed !important;
-}
-
-/* Dark mode support */
-body.dark-mode #projectFolderBtn,
-body.dark-mode button#projectFolderBtn,
-body.dark-mode .project-folder-button {
-    background-color: #0d7377 !important;
-    border: 1px solid #0a5d61 !important;
-    color: white !important;
-}
-
-body.dark-mode #projectFolderBtn:hover,
-body.dark-mode button#projectFolderBtn:hover,
-body.dark-mode .project-folder-button:hover {
-    background-color: #14a1a6 !important;
-}
-
-body.dark-mode #projectFolderBtn:disabled,
-body.dark-mode button#projectFolderBtn:disabled,
-body.dark-mode .project-folder-button:disabled {
-    background-color: #444 !important;
-    border-color: #333 !important;
 }

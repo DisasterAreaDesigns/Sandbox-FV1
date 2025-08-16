@@ -36,8 +36,8 @@
         <div class="file-input">
             <input type="file" id="fileInput" accept=".asm,.txt,.spn" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <button onclick="handleFileLoad()">Load File...</button>
-                
+                <input type="file" id="fileInput" accept=".spn,.asm,.txt" style="display: none;" onchange="handleFileInputChange()">
+                <button onclick="loadFile()">Load File...</button>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span>Or select an example program:</span>
                     <button onclick="loadExample('passthrough')">Pass-through</button>
@@ -58,19 +58,13 @@
                 <span id="editorOptionsToggle">▶</span> Editor Options
             </h3>
             <div id="editorOptionsContent" class="editor-options-content collapsed">
-                <div class="editor-help-text">
-                    <label>
-                        <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
-                        <span class="shortcut">Ctrl+F / ⌘+F Find</span>
-                        <span class="shortcut">Ctrl+Shift+F / ⌘+⌥+F Replace</span>
-                        <span class="shortcut">F3 Find Next</span>
-                    </label><br>
-                    <label>
-                        <span class="shortcut">Editor accepts ASCII text only</span>
-                    </label>
-                </div>
-                
                 <div class="options">
+                    <div class="project-folder-section">
+                        <button id="projectFolderBtn" class="project-folder-button" onclick="selectProjectDirectory()">
+                            Select Project Folder
+                        </button>
+                        <span id="projectFolderLabel" style="margin-left: 10px; color: #666; font-style: italic;">No directory selected</span>
+                    </div><br>
                     <label>
                         <input type="checkbox" id="editorHeightToggle" onchange="toggleEditorHeightWithSave()"> Large editor window
                     </label>
@@ -88,10 +82,16 @@
                             <option value="dark">Dark</option>
                         </select>
                     </label>
+                </div>
+                <div class="editor-help-text">
                     <label>
-                        <button id="projectFolderBtn" class="project-folder-button" onclick="selectProjectDirectory()">
-                            Select Project Folder
-                        </button>
+                        <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
+                        <span class="shortcut">Ctrl+F / ⌘+F Find</span>
+                        <span class="shortcut">Ctrl+Shift+F / ⌘+⌥+F Replace</span>
+                        <span class="shortcut">F3 Find Next</span>
+                    </label><br>
+                    <label>
+                        <span class="shortcut">Editor accepts ASCII text only</span>
                     </label>
                 </div>
             </div>
@@ -199,11 +199,11 @@
                         <p>These are some settings that change various editor settings</p>
                         <ul>
                             <h3>Editor Options</h3>
+                            <li>Select Project Folder: <i>Choose path to save HEX, binary, header, and source files</i></li>
                             <li>Large editor window: <i>Expands editor text area to show more instructions</i></li>
                             <li>Theme: <i>Use light, dark, or system color theme</i></li>
                             <li>Show editor mini-map: <i>Show a small navigation map in editor</i></li>
                             <li>Show full build results: <i>Show complete debug information in <b>Build Results</b> window</i></li>
-                            <li>Select Project Folder: <i>Choose path to save HEX, binary, header, and source files</i></li>
                         </ul>
                         <ul>
                             <h3>Hardware Options</h3>
@@ -386,7 +386,7 @@
                 DEBUG.reset();
                 
                 // Add event listener for file input change
-                document.getElementById('fileInput').addEventListener('change', loadFile);
+                // document.getElementById('fileInput').addEventListener('change', loadFile);
 
                 // Add hidden checkboxes that the assembler expects
                 const hiddenCheckboxes = document.createElement('div');
