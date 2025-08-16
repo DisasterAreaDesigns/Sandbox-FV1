@@ -1,6 +1,50 @@
-/* Base Styles */
+@font-face {
+    font-family: 'League Spartan';
+    src: url('fonts/LeagueSpartan-Regular.woff2') format('woff2'),
+         url('fonts/LeagueSpartan-Regular.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'League Spartan';
+    src: url('fonts/LeagueSpartan-Light.woff2') format('woff2'),
+         url('fonts/LeagueSpartan-Light.woff') format('woff');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'League Spartan';
+    src: url('fonts/LeagueSpartan-Medium.woff2') format('woff2'),
+         url('fonts/LeagueSpartan-Medium.woff') format('woff');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'League Spartan';
+    src: url('fonts/LeagueSpartan-SemiBold.woff2') format('woff2'),
+         url('fonts/LeagueSpartan-SemiBold.woff') format('woff');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'League Spartan';
+    src: url('fonts/LeagueSpartan-Bold.woff2') format('woff2'),
+         url('fonts/LeagueSpartan-Bold.woff') format('woff');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'League Spartan', sans-serif;
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
@@ -9,46 +53,141 @@ body {
 
 .container {
     background-color: white;
-    padding: 30px;
+    padding: 0; /* Remove padding so header can be full width */
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
 }
 
-/* Typography */
+/* Add padding back to the content area */
+.container > *:not(.header-bar) {
+    margin-left: 30px;
+    margin-right: 30px;
+}
+
+.container > h2:first-of-type {
+    margin-top: 0;
+}
+
+.container > #messages {
+    margin-left: 30px;
+    margin-right: 30px;
+    /* Keep existing margins for top/bottom */
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+/* UPDATED HEADER STYLES - ANIMATED */
+.header-bar {
+    background: #ffffff;
+    border-bottom: 4px solid #4CAF50;
+    padding: 25px 40px 20px 40px;
+    margin: 0 0 30px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+}
+
+.header-content {
+    display: flex;
+    align-items: baseline;
+    gap: 15px;
+}
+
+.header-bar h1 {
+    margin: 0;
+    font-size: 36px;
+    font-weight: 400;
+    color: #2c3e50;
+    letter-spacing: -1px;
+}
+
+.header-bar .build {
+    font-size: 14px;
+    color: #7f8c8d;
+    background: #ecf0f1;
+    padding: 6px 12px;
+    border-radius: 25px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.icon-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.app-icon {
+    height: 64px;
+    width: auto;
+    opacity: 0.9;
+    transition: opacity 0.3s ease;
+    cursor: pointer;
+    color: #4CAF50; /* Default green */
+}
+
+.app-icon:hover {
+    opacity: 1;
+}
+
+/* Single loading line animation */
+.header-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    animation: loadingLineOnce 2s ease-in-out forwards;
+}
+
+@keyframes loadingLineOnce {
+    0% { 
+        width: 0; 
+        opacity: 1;
+    }
+    70% { 
+        width: 100%; 
+        opacity: 1;
+    }
+    100% { 
+        width: 100%; 
+        opacity: 0;
+    }
+}
+
 h1 {
     color: #333;
     margin-bottom: 30px;
 }
 
-h2, h3 {
-    color: #333;
+h2 {
+    margin-top: 30px;
+    margin-bottom: 15px;
+    font-weight: 400;
 }
 
-/* Header Bar */
-.header-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
+.input-section,
+.output-section {
+    margin-bottom: 20px;
 }
 
-.header-bar h1 {
-    margin: 0;
-    font-size: 28px;
+textarea {
+    width: 100%;
+    height: 300px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 4px;
 }
 
-.header-bar .build {
-    font-size: 16px;
-    color: #666;
-    margin-left: 8px;
-}
-
-.app-icon {
-    height: 96px;
-    width: auto;
-}
-
-/* Monaco Editor */
+/* Editor styles */
 .editor-container {
     resize: none;
     overflow: hidden;
@@ -64,74 +203,85 @@ h2, h3 {
     height: 400px;
     border: 1px solid #ccc;
     font-family: monospace;
+    box-sizing: border-box;
 }
 
-/* Collapsible Sections - Standardized */
-.editor-options-section,
+/* Consistent section spacing */
+.file-input,
+.instructions-section,
+.editor-options-section, 
 .hardware-options-section,
+.output-controls,
 .output-text-section,
-.instructions-section {
+.download-buttons {
     margin-bottom: 20px;
 }
 
-.editor-options-section h3,
-.hardware-options-section h3,
-.output-text-section h3,
-.instructions-section h3 {
-    margin-bottom: 10px;
-    font-size: 18px;
-    color: #333;
-    cursor: pointer;
-    user-select: none;
+/* Button group spacing */
+.file-input + .editor-options-section,
+.editor-container + div,
+h2 + div {
+    margin-top: 20px;
 }
 
+/* All collapsible section headers */
+.instructions-section h3,
+.editor-options-section h3,
+.hardware-options-section h3,
+.output-text-section h3 {
+    margin-bottom: 10px;
+    margin-top: 0;
+    font-size: 16px;
+    font-weight: 400;
+    color: #333;
+    padding: 0;
+}
+
+/* All toggle arrows */
+#instructionsToggle,
+#editorOptionsToggle,
+#hardwareOptionsToggle,
+#outputToggle {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    margin-right: 8px;
+    width: 12px;
+    text-align: center;
+}
+
+/* All collapsible content areas */
+.instructions-content,
 .editor-options-content,
 .hardware-options-content,
-.output-content,
-.instructions-content {
+.output-content {
     overflow: hidden;
     transition: max-height 0.3s ease-out;
     max-height: 1000px;
 }
 
+/* All collapsed states */
+.instructions-content.collapsed,
 .editor-options-content.collapsed,
 .hardware-options-content.collapsed,
-.output-content.collapsed,
-.instructions-content.collapsed {
+.output-content.collapsed {
     max-height: 0;
 }
 
-/* Section Content */
-.editor-help-text {
-    color: #888;
-    font-size: 13px;
-    padding-top: 12px;
-    padding-left: 4px;
-    margin-bottom: 8px;
-    font-style: italic;
+.output-content:not(.collapsed) {
+    max-height: 500px;
 }
 
-.shortcut {
-    margin-right: 20px;
-    white-space: nowrap;
-}
-
+/* Boxed content areas (instructions text and output controls) */
+.instructions-text,
 .options,
-.output-controls,
-.download-buttons {
-    padding: 15px;
+.output-controls {
+    margin: 20px 0;
+    padding: 10px 15px;
     background-color: #f8f8f8;
     border-radius: 4px;
-    margin-bottom: 20px;
-}
-
-.options label {
-    margin-right: 20px;
-    display: inline-block;
 }
 
 .instructions-text {
-    padding: 10px 0;
     line-height: 1.6;
 }
 
@@ -143,12 +293,16 @@ h2, h3 {
     margin-bottom: 0;
 }
 
-/* File Input */
-.file-input {
-    margin-bottom: 20px;
+.options {
+    padding: 15px; /* Override for slightly more padding */
 }
 
-/* Buttons */
+.options label {
+    margin-right: 20px;
+    display: inline-block;
+}
+
+/* Button styles */
 button {
     background-color: #4CAF50;
     color: white;
@@ -170,65 +324,7 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* Button Grid for Filename Selection */
-.button-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-    margin-top: 6px;
-}
-
-.filename-btn {
-    background-color: #ccc;
-    color: #333;
-    border: none;
-    padding: 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.2s;
-}
-
-.filename-btn.selected {
-    background-color: #4caf50;
-    color: white;
-}
-
-/* Text Areas and Output */
-textarea {
-    width: 100%;
-    height: 300px;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    border: 1px solid #ddd;
-    padding: 10px;
-    border-radius: 4px;
-}
-
-#output {
-    background-color: #f8f8f8;
-    white-space: pre-wrap;
-}
-
-#messages {
-    height: 200px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 10px;
-    margin: 10px 0;
-    background-color: #f8f8f8;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    display: block;
-    box-sizing: border-box;
-}
-
-/* Status Messages */
+/* Status message colors */
 .error {
     color: red;
     margin-top: 10px;
@@ -244,7 +340,92 @@ textarea {
     margin-top: 10px;
 }
 
-/* Modal Styles */
+#output {
+    background-color: #f8f8f8;
+    white-space: pre; /* Changed from pre-wrap to preserve formatting without wrapping */
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    resize: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 200px;
+    overflow-x: auto; /* Add horizontal scroll instead of wrapping */
+    overflow-y: auto;
+    word-break: keep-all; /* Prevent breaking of hex values and assembly code */
+}
+
+.output-text-section {
+    margin-top: 20px;
+}
+
+.editor-help-text {
+    color: #888;
+    padding-top: 12px;
+    padding-left: 4px;
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+.shortcut {
+    margin-right: 20px;
+    white-space: nowrap;
+}
+
+/* Example buttons */
+.example-buttons {
+    margin-top: 10px;
+}
+
+.example-buttons span {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    max-width: 600px;
+}
+
+.button-grid button {
+    padding: 12px;
+    font-size: 14px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.button-grid button:hover {
+    background-color: #45a049;
+}
+
+.filename-btn {
+    background-color: #ccc;
+    color: #333;
+    border: none;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: Arial, sans-serif !important;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.filename-btn.selected {
+    background-color: #4caf50;
+    color: white;
+}
+
+/* Modal styles */
 .modal {
     display: none;
     position: fixed;
@@ -299,6 +480,7 @@ textarea {
     font-size: 14px;
 }
 
+/* Modal button types */
 .btn-primary {
     background-color: #007bff;
     color: white;
@@ -326,7 +508,8 @@ textarea {
     background-color: #c82333;
 }
 
-.modal input[type="text"], .modal textarea {
+.modal input[type="text"],
+.modal textarea {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -342,7 +525,69 @@ textarea {
     font-weight: bold;
 }
 
-/* Dark Mode Styles */
+/* Messages area */
+#messages {
+    height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    margin: 10px 0;
+    background-color: #f8f8f8;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    display: block;
+    box-sizing: border-box;
+    resize: none;
+}
+
+#messages .message {
+    margin-bottom: 5px;
+    padding: 2px 0;
+}
+
+#messages .message.error {
+    color: #d32f2f;
+}
+
+#messages .message.success {
+    color: #388e3c;
+}
+
+#messages .message.warning {
+    color: #f57c00;
+}
+
+#messages .message.info {
+    color: #1976d2;
+}
+
+/* Scrollbar styling for messages */
+#messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+#messages::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#messages::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+#messages::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* ===== DARK MODE STYLES ===== */
+/* IMPORTANT: Dark mode only changes colors, NOT spacing/margins/padding */
+
 body.dark-mode {
     background-color: #1a1a1a;
     color: #e0e0e0;
@@ -350,7 +595,7 @@ body.dark-mode {
 
 body.dark-mode .container {
     background-color: #2a2a2a;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-mode h1,
@@ -359,21 +604,50 @@ body.dark-mode h3 {
     color: #e0e0e0;
 }
 
+body.dark-mode .instructions-section h3,
+body.dark-mode .editor-options-section h3,
+body.dark-mode .hardware-options-section h3,
+body.dark-mode .output-text-section h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .header-bar {
+    background: #2a2a2a;
+    border-bottom-color: #0d7377;
+}
+
+body.dark-mode .header-bar h1 {
+    color: #e0e0e0;
+}
+
 body.dark-mode .header-bar .build {
+    background: #333;
     color: #999;
 }
 
-body.dark-mode textarea,
-body.dark-mode #output,
-body.dark-mode #messages {
+body.dark-mode .header-bar::after {
+    background: linear-gradient(90deg, #0d7377, #14a1a6);
+}
+
+body.dark-mode .app-icon {
+    color: #107377; /* Dark mode */
+}
+
+body.dark-mode textarea {
     background-color: #1e1e1e;
     color: #d4d4d4;
     border-color: #444;
 }
 
+body.dark-mode #output {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+}
+
+/* Dark mode boxed areas - only change colors, not spacing */
 body.dark-mode .options,
 body.dark-mode .output-controls,
-body.dark-mode .download-buttons {
+body.dark-mode .instructions-text {
     background-color: #333;
 }
 
@@ -418,7 +692,7 @@ body.dark-mode footer a {
     color: #14a1a6;
 }
 
-/* Modal Dark Mode */
+/* Dark mode modals */
 body.dark-mode .modal-content {
     background-color: #2a2a2a;
     color: #e0e0e0;
@@ -435,6 +709,7 @@ body.dark-mode .modal textarea {
     border-color: #444;
 }
 
+/* Dark mode modal buttons */
 body.dark-mode .btn-primary {
     background-color: #0d7377;
     border: 1px solid #0a5d61;
@@ -460,4 +735,101 @@ body.dark-mode .btn-danger {
 
 body.dark-mode .btn-danger:hover {
     background-color: #cc4444;
+}
+
+/* Dark mode messages */
+body.dark-mode #messages {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border-color: #444;
+}
+
+body.dark-mode #messages .message.error {
+    color: #f48fb1;
+}
+
+body.dark-mode #messages .message.success {
+    color: #81c784;
+}
+
+body.dark-mode #messages .message.warning {
+    color: #ffb74d;
+}
+
+body.dark-mode #messages .message.info {
+    color: #64b5f6;
+}
+
+/* Dark mode scrollbar */
+body.dark-mode #messages::-webkit-scrollbar-track {
+    background: #333;
+}
+
+body.dark-mode #messages::-webkit-scrollbar-thumb {
+    background: #555;
+}
+
+body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+/* Project folder button with optimized spacing and ellipsis */
+#projectFolderBtn,
+button#projectFolderBtn,
+.project-folder-button {
+    background-color: #4CAF50 !important;
+    color: white !important;
+    padding: 10px 12px !important; /* Reduced horizontal padding from 20px to 12px */
+    border: none !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 16px !important;
+    font-family: 'League Spartan', sans-serif !important;
+    margin-left: 10px !important;
+    transition: background-color 0.3s ease !important;
+    min-width: 180px !important;
+    max-width: 180px !important;
+    text-align: center !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important; /* CSS ellipsis for overflow */
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+    line-height: 1.2 !important;
+}
+
+#projectFolderBtn:hover,
+button#projectFolderBtn:hover,
+.project-folder-button:hover {
+    background-color: #45a049 !important;
+}
+
+#projectFolderBtn:disabled,
+button#projectFolderBtn:disabled,
+.project-folder-button:disabled {
+    background-color: #ccc !important;
+    cursor: not-allowed !important;
+}
+
+/* Dark mode support */
+body.dark-mode #projectFolderBtn,
+body.dark-mode button#projectFolderBtn,
+body.dark-mode .project-folder-button {
+    background-color: #0d7377 !important;
+    border: 1px solid #0a5d61 !important;
+    color: white !important;
+}
+
+body.dark-mode #projectFolderBtn:hover,
+body.dark-mode button#projectFolderBtn:hover,
+body.dark-mode .project-folder-button:hover {
+    background-color: #14a1a6 !important;
+}
+
+body.dark-mode #projectFolderBtn:disabled,
+body.dark-mode button#projectFolderBtn:disabled,
+body.dark-mode .project-folder-button:disabled {
+    background-color: #444 !important;
+    border-color: #333 !important;
 }

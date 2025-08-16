@@ -1,20 +1,13 @@
-// User Preferences Storage System
+// User Preferences Storage System - FV-1 Editor (Editor Options Only)
 class UserPreferences {
     constructor() {
-        this.storageKey = 'fxcore_editor_preferences';
+        this.storageKey = 'fv1_editor_preferences';
         this.defaults = {
-            // Editor Options
+            // Editor Options Only
             editorHeight: false,        // Large editor window
             darkMode: 'system',        // Dark mode: 'dark', 'light', or 'system'
             minimap: false,            // Show editor mini-map
-            debugMode: false,          // Show full build results
-            
-            // Hardware Options
-            hwMode: 'hid',             // Hardware mode: 'hid' or 'file'
-            fxcoreAddress: '0x30',     // FXCore I2C address
-            programTarget: 'ram',      // Program target: 'ram' or '0'-'15'
-            outputDirectory: null,     // Can't persist file handles
-            serialPort: null           // Can't persist serial ports
+            debugMode: false           // Show full build results
         };
     }
 
@@ -26,22 +19,14 @@ class UserPreferences {
                 editorHeight: document.getElementById('editorHeightToggle')?.checked || false,
                 darkMode: this.getCurrentDarkModeSetting(),
                 minimap: document.getElementById('minimapToggle')?.checked || false,
-                debugMode: document.getElementById('debugToggle')?.checked || false,
-                
-                // Get current hardware settings
-                hwMode: selectedHW || 'hid',
-                fxcoreAddress: document.getElementById('FXcoreAddr')?.value || '0x30',
-                programTarget: selectedProgram || 'ram'
-                // Note: outputDirectory and serialPort can't be persisted
+                debugMode: document.getElementById('debugToggle')?.checked || false
             };
             
             localStorage.setItem(this.storageKey, JSON.stringify(currentPrefs));
             debugLog('Preferences saved', 'info');
-            debugLog(JSON.stringify(currentPrefs), 'verbose');
             return true;
         } catch (error) {
             debugLog('Failed to save preferences', 'errors');
-            debugLog(JSON.stringify(error), 'verbose');
             return false;
         }
     }
@@ -53,13 +38,11 @@ class UserPreferences {
             if (saved) {
                 const prefs = JSON.parse(saved);
                 debugLog('Preferences loaded', 'info');
-                debugLog(JSON.stringify(prefs), 'verbose');
                 return { ...this.defaults, ...prefs };
             }
             return this.defaults;
         } catch (error) {
             debugLog('Failed to load preferences', 'errors');
-            debugLog(JSON.stringify(error), 'verbose');
             return this.defaults;
         }
     }
@@ -71,10 +54,6 @@ class UserPreferences {
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             this.applyEditorOptions(prefs);
-            this.applyHardwareOptions(prefs);
-            
-            // Don't save here - we're applying saved preferences, not creating new ones
-            // Only save when the user actually changes something via the auto-save listeners
         });
     }
 
@@ -130,57 +109,6 @@ class UserPreferences {
         }
     }
 
-    applyHardwareOptions(prefs) {
-        // Hardware mode
-        if (prefs.hwMode !== selectedHW) {
-            // Set the mode without cycling through
-            selectedHW = prefs.hwMode;
-            const hwModeDisplay = document.getElementById('HWModeDisplay');
-            if (hwModeDisplay) {
-                hwModeDisplay.textContent = selectedHW === 'hid' ? 'HID mode' : 'File mode';
-            }
-            
-            const fileModeDiv = document.getElementById('FileModeDiv');
-            const hidModeDiv = document.getElementById('HidModeDiv');
-            
-            if (selectedHW === 'hid') {
-                if (fileModeDiv) fileModeDiv.style.display = 'none';
-                if (hidModeDiv) hidModeDiv.style.display = 'block';
-            } else {
-                if (fileModeDiv) fileModeDiv.style.display = 'block';
-                if (hidModeDiv) hidModeDiv.style.display = 'none';
-            }
-        }
-
-        // FXCore address
-        const fxcoreAddrInput = document.getElementById('FXcoreAddr');
-        if (fxcoreAddrInput && prefs.fxcoreAddress) {
-            fxcoreAddrInput.value = prefs.fxcoreAddress;
-            if (typeof FXCoreTargets !== 'undefined') {
-                FXCoreTargets.FXCore_I2C = prefs.fxcoreAddress;
-            }
-        }
-
-        // Program target
-        if (prefs.programTarget !== selectedProgram) {
-            selectedProgram = prefs.programTarget;
-            if (typeof updateProgramTargetDisplay === 'function') {
-                updateProgramTargetDisplay();
-            }
-            if (window.syncProgramTargetDisplays) {
-                window.syncProgramTargetDisplays();
-            }
-        }
-
-        // Update UI elements if functions exist
-        if (typeof updateHardwareConnectionStatus === 'function') {
-            updateHardwareConnectionStatus();
-        }
-        if (typeof updateBuildResultsButtons === 'function') {
-            updateBuildResultsButtons();
-        }
-    }
-
     // Clear all saved preferences
     clear() {
         localStorage.removeItem(this.storageKey);
@@ -221,9 +149,9 @@ class UserPreferences {
                 break;
         }
 
-        // Apply the theme
+        // Apply the theme - updated for FV-1 themes
         if (editor && typeof monaco !== 'undefined') {
-            const theme = shouldUseDark ? 'fxcoreDark' : 'fxcoreTheme';
+            const theme = shouldUseDark ? 'spinDark' : 'spinTheme';
             monaco.editor.setTheme(theme);
         }
         document.body.classList.toggle('dark-mode', shouldUseDark);
@@ -235,10 +163,7 @@ class UserPreferences {
             editorHeight: document.getElementById('editorHeightToggle')?.checked || false,
             darkMode: this.getCurrentDarkModeSetting(),
             minimap: document.getElementById('minimapToggle')?.checked || false,
-            debugMode: document.getElementById('debugToggle')?.checked || false,
-            hwMode: selectedHW || 'hid',
-            fxcoreAddress: document.getElementById('FXcoreAddr')?.value || '0x30',
-            programTarget: selectedProgram || 'ram'
+            debugMode: document.getElementById('debugToggle')?.checked || false
         };
     }
 }
@@ -272,20 +197,6 @@ function setupAutoSave() {
             userPrefs.save();
         });
     }
-
-    // Save when FXCore address changes
-    const fxcoreAddrInput = document.getElementById('FXcoreAddr');
-    if (fxcoreAddrInput) {
-        fxcoreAddrInput.addEventListener('change', () => {
-            if (typeof FXCoreTargets !== 'undefined') {
-                FXCoreTargets.FXCore_I2C = fxcoreAddrInput.value;
-            }
-            userPrefs.save();
-        });
-    }
-
-    // Save when hardware mode or program target changes
-    // These will be called from your existing functions
 }
 
 // Modified versions of your existing functions to include auto-save
@@ -294,12 +205,6 @@ function toggleEditorHeightWithSave() {
         toggleEditorHeight();
     }
     userPrefs.save();
-}
-
-// Modified dark mode toggle to cycle through three states: Light -> Dark -> System
-function toggleDarkModeWithSave() {
-    // This function is no longer needed with dropdown
-    // Left for compatibility but does nothing
 }
 
 function toggleMinimapWithSave() {
@@ -312,20 +217,6 @@ function toggleMinimapWithSave() {
 function toggleDebugPresetWithSave() {
     if (typeof toggleDebugPreset === 'function') {
         toggleDebugPreset();
-    }
-    userPrefs.save();
-}
-
-function cycleHWModeWithSave() {
-    if (typeof cycleHWMode === 'function') {
-        cycleHWMode();
-    }
-    userPrefs.save();
-}
-
-function cycleProgramTargetWithSave() {
-    if (typeof cycleProgramTarget === 'function') {
-        cycleProgramTarget();
     }
     userPrefs.save();
 }

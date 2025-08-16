@@ -1,6 +1,47 @@
 // UI Functions
 let assembledData = null;
 let outputDirectoryHandle = null;
+let preferredStartDirectory = 'downloads';
+let projectDirectoryHandle = null;
+
+// let selectedProjectPath = '';
+
+// async function selectProjectDirectory() {
+//     try {
+//         if ('showDirectoryPicker' in window) {
+//             // Show directory picker and get the handle
+//             projectDirectoryHandle = await window.showDirectoryPicker();
+            
+//             // Update the button with the folder name
+//             const button = document.getElementById('projectFolderBtn');
+//             if (button) {
+//                 const folderName = projectDirectoryHandle.name;
+                
+//                 // Simple truncation - if folder name is too long, show "...name"
+//                 if (folderName.length > 15) {
+//                     button.textContent = '...' + folderName.slice(-12);
+//                 } else {
+//                     button.textContent = folderName;
+//                 }
+                
+//                 // Show full folder name on hover
+//                 button.title = `Selected: ${folderName}`;
+//             }
+            
+//             debugLog('Project directory selected successfully', 'success');
+            
+//             // Update any button states or UI elements that depend on project directory
+//             // Add any additional logic you need here, similar to how selectOutputDirectory works
+            
+//         } else {
+//             debugLog('Directory selection not supported in this browser', 'errors');
+//         }
+//     } catch (err) {
+//         if (err.name !== 'AbortError') {
+//             debugLog('Error selecting project directory: ' + err.message, 'errors');
+//         }
+//     }
+// }
 
 async function selectOutputDirectory() {
     try {
@@ -11,6 +52,7 @@ async function selectOutputDirectory() {
             outputDirDisplay.style.color = '#28a745'; // Green color for connected
             
             debugLog('Output directory selected successfully', 'success');
+
             
             // Update clear hardware button state
             updateClearHardwareButton();
@@ -35,6 +77,55 @@ function updateClearHardwareButton() {
     if (clearHardwareBtn) {
         clearHardwareBtn.disabled = !outputDirectoryHandle;
     }
+}
+
+async function selectProjectDirectory() {
+    try {
+        if ('showDirectoryPicker' in window) {
+            // Show directory picker and get the handle
+            projectDirectoryHandle = await window.showDirectoryPicker();
+            
+            // Update the button with the folder name
+            updateProjectFolderButton(projectDirectoryHandle);
+            
+            debugLog('Project directory selected successfully', 'success');
+            
+        } else {
+            debugLog('Directory selection not supported in this browser', 'errors');
+        }
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            debugLog('Error selecting project directory: ' + err.message, 'errors');
+        }
+    }
+}
+
+function updateProjectFolderButton(directoryHandle) {
+    const button = document.getElementById('projectFolderBtn');
+    if (!button) return;
+    
+    if (!directoryHandle) {
+        button.textContent = 'Select Project Folder';
+        button.title = '';
+        return;
+    }
+    
+    const folderName = directoryHandle.name;
+    
+    // Estimate ~8 pixels per character in League Spartan 16px
+    // Available space: 180px - 24px padding = 156px
+    const maxChars = Math.floor(156 / 8); // ~19 characters
+    
+    if (folderName.length <= maxChars) {
+        button.textContent = folderName;
+    } else {
+        // Reserve 3 characters for "..." (24px)
+        const availableForText = maxChars - 3; // ~16 characters
+        const truncatedText = folderName.substring(folderName.length - availableForText);
+        button.textContent = '...' + truncatedText;
+    }
+    
+    button.title = `Selected: ${folderName}`;
 }
 
 async function readHardwareIdentifier() {
@@ -122,12 +213,9 @@ function revertToDefaultDirectory() {
     document.getElementById('outputDirDisplay').textContent = 'No directory selected, using default directory';
     document.getElementById('outputDirDisplay').style.color = '#666';
     
-    // Update clear hardware button state
-    updateClearHardwareButton();
-    
-    // Disable the download buttons since we need a filename selected
-    document.getElementById('downloadHexBtn').disabled = true;
-    document.getElementById('downloadBinBtn').disabled = true;
+    // Update button states and hardware connection status
+    updateDownloadButtonStates();
+    updateHardwareConnectionStatus();
 }
 
 function displayHardwareInfo(hardwareInfo, filename) {
@@ -324,10 +412,25 @@ function selectFilename(btn) {
     // Update the visible label
     document.getElementById('filenameLabel').textContent = btn.textContent;
 
-    // Enable download buttons if we have assembled data (regardless of directory selection)
+    // Update button states
+    updateDownloadButtonStates();
+    
+    // Update hardware connection status to show selected slot
+    updateHardwareConnectionStatus();
+}
+
+function updateDownloadButtonStates() {
     const hasAssembly = assembledData !== null && document.getElementById('output').value.trim() !== '';
-    document.getElementById('downloadHexBtn').disabled = !hasAssembly;
+    const hasFilename = selectedFilename !== null;
+    const hasDirectory = outputDirectoryHandle !== null;
+    
+    // Plain download buttons (always use system file picker or browser download)
+    document.getElementById('downloadPlainHexBtn').disabled = !hasAssembly;
     document.getElementById('downloadBinBtn').disabled = !hasAssembly;
+    document.getElementById('downloadCHeaderBtn').disabled = !hasAssembly;
+    
+    // Hardware download button (requires directory AND filename AND assembly)
+    document.getElementById('downloadHexBtn').disabled = !(hasDirectory && hasFilename && hasAssembly);
 }
 
 async function clearEditor() {
@@ -354,28 +457,11 @@ async function clearEditor() {
         editor.setValue('');
     }
     
-    // Clear assembly output and disable download buttons
+    // Clear assembly output and reset button states
     document.getElementById('output').value = '';
     document.getElementById('messages').innerHTML = '';
-    document.getElementById('downloadHexBtn').disabled = true;
-    document.getElementById('downloadBinBtn').disabled = true;
-    document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
-}
-
-function clearSource() {
-    document.getElementById('sourceCode').value = '';
-    // updateLineNumbers();
-    
-    // Clear assembly output and disable download buttons
-    document.getElementById('output').value = '';
-    document.getElementById('messages').innerHTML = '';
-    document.getElementById('downloadHexBtn').disabled = true;
-    document.getElementById('downloadBinBtn').disabled = true;
-    document.getElementById('downloadCHeaderBtn').disabled = true;
-    assembledData = null;
-    
-    debugLog('Source code cleared', 'success');
+    updateDownloadButtonStates();
 }
 
 function assemble() {
@@ -405,12 +491,8 @@ function assemble() {
         // Get assembly statistics
         const stats = assembler.getAssemblyStats();
 
-        // Enable download buttons
-        const hasFilename = selectedFilename !== null;
-        const hasAssembly = assembledData !== null && hex.trim() !== '';
-        document.getElementById('downloadHexBtn').disabled = !(hasFilename && hasAssembly);
-        document.getElementById('downloadBinBtn').disabled = !(hasFilename && hasAssembly);
-        document.getElementById('downloadCHeaderBtn').disabled = !hasAssembly;
+        // Update button states
+        updateDownloadButtonStates();
         
         if (assembler.warnings.length === 0 && assembler.errors.length === 0) {
             debugLog('Assembly successful!', 'success');
@@ -420,19 +502,16 @@ function assemble() {
         debugLog(`Instructions: ${stats.nonNopInstructions} (${stats.totalInstructions} total including padding) | Checksum: 0x${stats.checksum.toString(16).toUpperCase().padStart(4, '0')}`, 'success');
     } else {
         document.getElementById('output').value = '';
-        document.getElementById('downloadHexBtn').disabled = true;
-        document.getElementById('downloadBinBtn').disabled = true;
         assembledData = null;
+        updateDownloadButtonStates();
     }
 }
 
 function clearAssembly() {
     document.getElementById('output').value = '';
     document.getElementById('messages').innerHTML = '';
-    document.getElementById('downloadHexBtn').disabled = true;
-    document.getElementById('downloadBinBtn').disabled = true;
-    document.getElementById('downloadCHeaderBtn').disabled = true;
     assembledData = null;
+    updateDownloadButtonStates();
     debugLog('Assembly output cleared', 'success');
 }
 
@@ -556,19 +635,6 @@ function closeModal(modalId) {
     // Don't automatically resolve here - let the specific handlers do it
 }
 
-function toggleDarkMode() {
-    const darkModeEnabled = document.getElementById('darkModeToggle').checked;
-
-    // Toggle Monaco editor theme
-    if (editor) {
-        const theme = darkModeEnabled ? 'spinDark' : 'spinTheme';
-        monaco.editor.setTheme(theme);
-    }
-
-    // Toggle body class for page theme
-    document.body.classList.toggle('dark-mode', darkModeEnabled);
-}
-
 function toggleEditorHeight() {
     if (editor) {
         const editorContainer = editor.getDomNode().parentElement;
@@ -594,6 +660,17 @@ function toggleDebugPreset() {
     }
 }
 
+function toggleMinimap() {
+    const showMinimap = document.getElementById('minimapToggle')?.checked || false;
+    if (editor) {
+        editor.updateOptions({
+            minimap: {
+                enabled: showMinimap
+            }
+        });
+    }
+}
+
 function showMessage(msg, type) {
     const className = type === 'error' ? 'errors' : 'success';
     debugLog(msg, className);
@@ -607,83 +684,74 @@ async function downloadHex() {
         return;
     }
 
+    if (!outputDirectoryHandle) {
+        debugLog('Please select an output directory first.', 'errors');
+        return;
+    }
+
     const filename = selectedFilename;
 
-    if (outputDirectoryHandle && 'showDirectoryPicker' in window) {
-        try {
-            const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
-                create: true
-            });
-            const writable = await fileHandle.createWritable();
-            await writable.write(hex);
-            await writable.close();
-            debugLog(`File saved as ${filename} in selected directory`, 'success');
-        } catch (err) {
-            debugLog('Error saving to directory: ' + err.message, 'errors');
-            // Fallback to regular download
-            downloadFile(filename, hex, 'text/plain');
-        }
-    } else {
-        // No directory selected, use normal browser download
-        downloadFile(filename, hex, 'text/plain');
-        debugLog(`File downloaded as ${filename} to default downloads folder`, 'success');
+    try {
+        const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
+            create: true
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(hex);
+        await writable.close();
+        debugLog(`File saved as ${filename} to hardware directory`, 'success');
+    } catch (err) {
+        debugLog('Error saving to hardware directory: ' + err.message, 'errors');
     }
 }
 
-async function downloadBinary() {
-    if (!assembledData) return;
+async function downloadHexToHardware() {
+    const hex = document.getElementById('output').value;
 
     if (!selectedFilename) {
         debugLog('Please select a filename first.', 'errors');
         return;
     }
 
-    const filename = selectedFilename.replace('.hex', '.bin');
-    const blob = new Blob([assembledData.slice(0, 512)], {
-        type: 'application/octet-stream'
-    });
-
-    if (outputDirectoryHandle && 'showDirectoryPicker' in window) {
-        try {
-            const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
-                create: true
-            });
-            const writable = await fileHandle.createWritable();
-            await writable.write(assembledData.slice(0, 512));
-            await writable.close();
-            debugLog(`Binary file saved as ${filename} in selected directory`, 'success');
-        } catch (err) {
-            debugLog('Error saving binary to directory: ' + err.message, 'errors');
-            // Fallback to regular download
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-    } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-        debugLog(`Binary file downloaded as ${filename} to default downloads folder`, 'success');
+    if (!outputDirectoryHandle) {
+        debugLog('Please select an output directory first.', 'errors');
+        return;
     }
+
+    const filename = selectedFilename;
+
+    try {
+        const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
+            create: true
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(hex);
+        await writable.close();
+        debugLog(`File saved as ${filename} to hardware directory`, 'success');
+    } catch (err) {
+        debugLog('Error saving to hardware directory: ' + err.message, 'errors');
+    }
+}
+
+async function downloadPlainHex() {
+    const hex = document.getElementById('output').value;
+    const filename = 'fv1_program.hex';
+    
+    await downloadWithPicker(hex, filename, 'text/plain', 'Intel HEX files');
+}
+
+async function downloadBinary() {
+    if (!assembledData) return;
+
+    const filename = 'fv1_program.bin';
+    const binaryData = assembledData.slice(0, 512);
+    
+    await downloadWithPicker(binaryData, filename, 'application/octet-stream', 'Binary files');
 }
 
 async function downloadCHeader() {
     if (!assembledData) return;
 
-    const filename = await showInputDialog(
-        'Save C Header',
-        'Enter filename:',
-        'Enter filename (e.g., my_program.h)',
-        'fv1_program.h'
-    );
-
-    if (!filename) return; // User cancelled
+    const filename = 'fv1_program.h';
 
     const assembler = new FV1Assembler('', {}); // Create instance just for the toCHeader method
     assembler.program = assembledData; // Set the assembled data
@@ -691,20 +759,77 @@ async function downloadCHeader() {
     const arrayName = filename.replace(/\.[^/.]+$/, "").toUpperCase() + '_DATA';
     const cHeader = assembler.toCHeader(arrayName);
     
-    downloadFile(filename, cHeader, 'text/plain');
-    debugLog(`C header downloaded as ${filename}`, 'success');
+    await downloadWithPicker(cHeader, filename, 'text/plain', 'C Header files');
 }
 
-function downloadFile(filename, content, mimeType) {
-    const blob = new Blob([content], {
-        type: mimeType
-    });
+// Modified downloadWithPicker function - use project directory when available
+async function downloadWithPicker(content, defaultFilename, mimeType, description) {
+    // Try to use File System Access API first
+    if ('showSaveFilePicker' in window) {
+        try {
+            const options = {
+                suggestedName: defaultFilename,
+                types: [{
+                    description: description,
+                    accept: {
+                        [mimeType]: [defaultFilename.substring(defaultFilename.lastIndexOf('.'))]
+                    }
+                }]
+            };
+            
+            // Use project directory if available, otherwise use default preference
+            if (projectDirectoryHandle) {
+                options.startIn = projectDirectoryHandle;
+                debugLog(`Using project directory: ${projectDirectoryHandle.name}`, 'verbose');
+            } else {
+                options.startIn = preferredStartDirectory;
+                debugLog(`Using default start directory: ${preferredStartDirectory}`, 'verbose');
+            }
+            
+            const fileHandle = await window.showSaveFilePicker(options);
+            
+            const writable = await fileHandle.createWritable();
+            if (content instanceof Uint8Array) {
+                await writable.write(content);
+            } else {
+                await writable.write(content);
+            }
+            await writable.close();
+            
+            debugLog(`File saved: ${fileHandle.name}`, 'success');
+            return true;
+            
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                return false; // User cancelled
+            } else {
+                debugLog('Error saving with file picker: ' + err.message, 'errors');
+                // Fall back to blob download
+            }
+        }
+    }
+    
+    // Fallback for browsers that don't support File System Access API
+    const browserSupported = await showConfirmDialog(
+        'Download File', 
+        'Your browser doesn\'t support the advanced file picker. The file will be downloaded to your default downloads folder. Continue?'
+    );
+    
+    if (!browserSupported) return false;
+    
+    // Create blob and download
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    
+    debugLog(`File downloaded as ${defaultFilename} to default downloads folder`, 'success');
+    return true;
 }
 
 function toggleOutput() {
@@ -734,33 +859,6 @@ function toggleInstructions() {
     }
 }
 
-// Toggle functions for new sections
-function toggleEditorOptions() {
-    const editorOptionsContent = document.getElementById('editorOptionsContent');
-    const editorOptionsToggle = document.getElementById('editorOptionsToggle');
-
-    if (editorOptionsContent.classList.contains('collapsed')) {
-        editorOptionsContent.classList.remove('collapsed');
-        editorOptionsToggle.textContent = '▼';
-    } else {
-        editorOptionsContent.classList.add('collapsed');
-        editorOptionsToggle.textContent = '▶';
-    }
-}
-
-function toggleHardwareOptions() {
-    const hardwareOptionsContent = document.getElementById('hardwareOptionsContent');
-    const hardwareOptionsToggle = document.getElementById('hardwareOptionsToggle');
-
-    if (hardwareOptionsContent.classList.contains('collapsed')) {
-        hardwareOptionsContent.classList.remove('collapsed');
-        hardwareOptionsToggle.textContent = '▼';
-    } else {
-        hardwareOptionsContent.classList.add('collapsed');
-        hardwareOptionsToggle.textContent = '▶';
-    }
-}
-
 async function loadExample(exampleName) {
     // Check for unsaved changes first
     if (hasEditorContent()) {
@@ -787,10 +885,8 @@ async function loadExample(exampleName) {
         editor.setScrollLeft(0);
         document.getElementById('output').value = '';
         document.getElementById('messages').innerHTML = '';
-        document.getElementById('downloadHexBtn').disabled = true;
-        document.getElementById('downloadBinBtn').disabled = true;
-        document.getElementById('downloadCHeaderBtn').disabled = true;
         assembledData = null;
+        updateDownloadButtonStates();
         debugLog('Example loaded successfully', 'success');
     }
 }
@@ -809,12 +905,9 @@ async function loadFile() {
         editor.setScrollLeft(0);
         document.getElementById('output').value = '';
         document.getElementById('messages').innerHTML = '';
-        document.getElementById('downloadHexBtn').disabled = true;
-        document.getElementById('downloadBinBtn').disabled = true;
-        document.getElementById('downloadCHeaderBtn').disabled = true;
         assembledData = null;
+        updateDownloadButtonStates();
         debugLog('File loaded successfully', 'success');
-        document.getElementById('exampleSelect').value = '';
     };
     reader.onerror = function() {
         debugLog('Error reading file', 'errors');
@@ -825,69 +918,13 @@ async function loadFile() {
 async function saveSource() {
     if (!editor) return false;
 
-    if (!hasEditorContent()) {
-        await showConfirmDialog('Save Source', 'There is no content to save.');
-        return false;
-    }
-
-    const filename = await showInputDialog(
-        'Save Source Code',
-        'Enter filename:',
-        'Enter filename (e.g., my_program.spn)',
-        'fv1_source.spn'
-    );
-
-    if (!filename) return false; // User cancelled
+    const filename = 'fv1_program.spn';
 
     const sourceCode = editor.getValue();
-    const blob = new Blob([sourceCode], {
-        type: 'text/plain'
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    return true; // Save completed successfully
+    const result = await downloadWithPicker(sourceCode, filename, 'text/plain', 'Source code files');
+    
+    return result; // Return true if save completed, false if cancelled
 }
-
-function toggleMinimap() {
-    const showMinimap = document.getElementById('minimapToggle')?.checked || false;
-    if (editor) {
-        editor.updateOptions({
-            minimap: {
-                enabled: showMinimap
-            }
-        });
-    }
-}
-
-// Add this function to detect and apply system dark mode preference
-function applySystemDarkMode() {
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const darkModeToggle = document.getElementById('darkModeToggle');
-
-    if (darkModeToggle && editor) {
-        darkModeToggle.checked = prefersDark;
-        const theme = prefersDark ? 'spinDark' : 'spinTheme';
-        monaco.editor.setTheme(theme);
-    }
-}
-
-// Add listener for system dark mode changes
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    const darkModeToggle = document.getElementById('darkModeToggle');
-    if (darkModeToggle && editor) {
-        darkModeToggle.checked = e.matches;
-        const theme = e.matches ? 'spinDark' : 'spinTheme';
-        monaco.editor.setTheme(theme);
-        document.body.classList.toggle('dark-mode', e.matches);
-    }
-});
 
 // Close modal when clicking outside and add beforeunload handler
 window.onclick = function(event) {
@@ -908,12 +945,10 @@ window.addEventListener('beforeunload', function(e) {
     }
 });
 
-// Initialize hidden checkboxes and file input handler
+// Initialize UI when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize debug system
     DEBUG.reset();
-    DEBUG.showConfig();
-    // DEBUG.setPreset('clean'); // Start with minimal output
     
     // Add event listener for file input change
     document.getElementById('fileInput').addEventListener('change', loadFile);
@@ -933,6 +968,6 @@ document.addEventListener('DOMContentLoaded', function() {
         selectFilename(defaultButton);
     }
     
-    // Initialize clear hardware button state
-    updateClearHardwareButton();
+    updateHardwareConnectionStatus();
+    updateDownloadButtonStates();
 });
