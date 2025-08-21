@@ -4,6 +4,8 @@ let outputDirectoryHandle = null;
 let preferredStartDirectory = 'downloads';
 let projectDirectoryHandle = null;
 let selectedFilename = null;
+let serialPort = null;
+
 
 async function selectOutputDirectory() {
     try {
@@ -47,6 +49,7 @@ function updateHardwareConnectionStatus() {
     const filenameWithoutExt = selectedFilename.slice(0, -4);
     const targetText = `Program Slot ${filenameWithoutExt}`;
     const serialConnected = document.getElementById('serialPortDisplay').textContent.includes('Connected');
+    // const serialConnected = isSerialConnected();
 
     // Check file mode connection (output directory)
     if (outputDirectoryHandle) {
@@ -236,6 +239,9 @@ async function clearHardware() {
 
     // add in all.hex
     hexFiles.push('all.hex');
+
+    // add in dump.txt
+    hexFiles.push('dump.txt');
     
     try {
         let successCount = 0;
@@ -297,14 +303,12 @@ async function clearHardware() {
         debugLog('Error during hardware clear: ' + err.message, 'errors');
     }
 }
-
 async function serialConnect() {
     console.log('Serial connect initiated');
     try {
-        const port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 115200 });
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({ baudRate: 115200 });
         debugLog("Serial port connected", "serial");
-        
         
         // Update the display - simplified
         const portDisplay = document.getElementById('serialPortDisplay');
@@ -313,7 +317,7 @@ async function serialConnect() {
         updateHardwareConnectionStatus(); // fire this to catch the change
         
         const decoder = new TextDecoderStream();
-        port.readable.pipeTo(decoder.writable);
+        serialPort.readable.pipeTo(decoder.writable);
         const reader = decoder.readable.getReader();
         
         // Buffer to accumulate partial lines
@@ -327,6 +331,8 @@ async function serialConnect() {
                 portDisplay.textContent = 'Disconnected';
                 portDisplay.style.color = '#dc3545'; // Red color for disconnected
                 updateHardwareConnectionStatus(); // fire this to catch the change
+                // Clear the global serial port reference
+                serialPort = null;
                 // Process any remaining data in buffer
                 if (buffer.trim()) {
                     debugLog(buffer.trim(), "serial");
@@ -361,10 +367,98 @@ async function serialConnect() {
         portDisplay.textContent = `Error: ${err.message}`;
         portDisplay.style.color = '#dc3545'; // Red color for error
         updateHardwareConnectionStatus(); // fire this to catch the change
+        // Clear the global serial port reference
+        serialPort = null;
     }
-
-
 }
+
+async function sendSerialCommand(command) {
+    if (!serialPort || !serialPort.writable) {
+        debugLog('Serial port not available for writing', 'errors');
+        return false;
+    }
+    
+    try {
+        const writer = serialPort.writable.getWriter();
+        const encoder = new TextEncoder();
+        const data = encoder.encode(command + '\r\n'); // Add newline to command
+        await writer.write(data);
+        writer.releaseLock();
+        debugLog(`Sent command: ${command}`, 'serial');
+        return true;
+    } catch (err) {
+        debugLog(`Error sending serial command: ${err.message}`, 'errors');
+        return false;
+    }
+}
+
+// async function serialConnect() {
+//     console.log('Serial connect initiated');
+//     try {
+//         const port = await navigator.serial.requestPort();
+//         await port.open({ baudRate: 115200 });
+//         debugLog("Serial port connected", "serial");
+        
+        
+//         // Update the display - simplified
+//         const portDisplay = document.getElementById('serialPortDisplay');
+//         portDisplay.textContent = 'Connected';
+//         portDisplay.style.color = '#28a745'; // Green color for connected
+//         updateHardwareConnectionStatus(); // fire this to catch the change
+        
+//         const decoder = new TextDecoderStream();
+//         port.readable.pipeTo(decoder.writable);
+//         const reader = decoder.readable.getReader();
+        
+//         // Buffer to accumulate partial lines
+//         let buffer = '';
+        
+//         while (true) {
+//             const { value, done } = await reader.read();
+//             if (done) {
+//                 debugLog("Serial reader closed", "serial");
+//                 // Update display when disconnected
+//                 portDisplay.textContent = 'Disconnected';
+//                 portDisplay.style.color = '#dc3545'; // Red color for disconnected
+//                 updateHardwareConnectionStatus(); // fire this to catch the change
+//                 // Process any remaining data in buffer
+//                 if (buffer.trim()) {
+//                     debugLog(buffer.trim(), "serial");
+//                 }
+//                 break;
+//             }
+            
+//             if (value) {
+//                 // Add new data to buffer
+//                 buffer += value;
+                
+//                 // Process complete lines
+//                 const lines = buffer.split('\n');
+                
+//                 // Keep the last incomplete line in the buffer
+//                 buffer = lines.pop() || '';
+                
+//                 // Process all complete lines
+//                 lines.forEach(line => {
+//                     const trimmedLine = line.replace(/\r$/, '').trim(); // Remove \r and whitespace
+//                     if (trimmedLine) {
+//                         debugLog(trimmedLine, "serial");
+//                     }
+//                 });
+//             }
+//         }
+//     } catch (err) {
+//         debugLog(`Error opening serial port: ${err.message}`, "serial");
+        
+//         // Update display on error
+//         const portDisplay = document.getElementById('serialPortDisplay');
+//         portDisplay.textContent = `Error: ${err.message}`;
+//         portDisplay.style.color = '#dc3545'; // Red color for error
+//         updateHardwareConnectionStatus(); // fire this to catch the change
+//     }
+
+
+// }
 
 
 
@@ -1092,29 +1186,113 @@ window.addEventListener('beforeunload', function(e) {
     }
 });
 
-// // Initialize UI when DOM is loaded
-// document.addEventListener('DOMContentLoaded', function() {
-//     // Initialize debug system
-//     DEBUG.reset();
+async function dumpEEPROM() {
+    // Check if serial port is connected
+    const portDisplay = document.getElementById('serialPortDisplay');
+    if (!portDisplay || portDisplay.textContent !== 'Connected' || !serialPort) {
+        debugLog('Please connect to serial port first.', 'errors');
+        return;
+    }
     
-//     // Add event listener for file input change
-//     // document.getElementById('fileInput').addEventListener('change', loadFile);
-
-//     // Add hidden checkboxes that the assembler expects
-//     const hiddenCheckboxes = document.createElement('div');
-//     hiddenCheckboxes.style.display = 'none';
-//     hiddenCheckboxes.innerHTML = `
-//         <input type="checkbox" id="clampOption">
-//         <input type="checkbox" id="spinRealsOption">
-//     `;
-//     document.body.appendChild(hiddenCheckboxes);
-
-//     // Select "3.hex" by default
-//     const defaultButton = document.querySelector('.filename-btn[data-filename="3.hex"]');
-//     if (defaultButton) {
-//         selectFilename(defaultButton);
-//     }
-    
-//     updateHardwareConnectionStatus();
-//     updateDownloadButtonStates();
-// });
+    try {
+        // Clear build results window first
+        document.getElementById('messages').innerHTML = '';
+        debugLog('Build results cleared, ready for EEPROM dump', 'success');
+        
+        // Send "dumpall" command to serial port
+        const success = await sendSerialCommand('dumpall');
+        if (!success) {
+            debugLog('Failed to send dumpall command', 'errors');
+            return;
+        }
+        
+        debugLog('Sent "dumpall" command to serial port - waiting for EEPROM dump data...', 'success');
+        
+        // Monitor serial console output for dump data
+        let buffer = '';
+        let dumpStarted = false;
+        let dumpComplete = false;
+        let hexLines = [];
+        const timeout = 30000; // 30 second timeout
+        const startTime = Date.now();
+        
+        // We'll monitor the debug log for serial data instead of directly reading the port
+        // since the serial connection is already being read by serialConnect()
+        const originalDebugLog = window.debugLog;
+        let foundDumpData = false;
+        
+        // Override debugLog temporarily to capture serial data
+        window.debugLog = function(message, type) {
+            // Call original debugLog first
+            originalDebugLog(message, type);
+            
+            // Only process serial messages
+            if (type === 'serial') {
+                const trimmedLine = message.trim();
+                
+                if (trimmedLine === '=== EEPROM DUMP START ===') {
+                    dumpStarted = true;
+                    hexLines = []; // Clear any previous data
+                    foundDumpData = true;
+                    return;
+                }
+                
+                if (trimmedLine === '=== EEPROM DUMP COMPLETE ===') {
+                    dumpComplete = true;
+                    return;
+                }
+                
+                // Collect hex lines between start and complete markers
+                if (dumpStarted && !dumpComplete && trimmedLine.startsWith(':')) {
+                    hexLines.push(trimmedLine);
+                }
+            }
+        };
+        
+        // Wait for dump to complete or timeout
+        while (!dumpComplete && (Date.now() - startTime) < timeout) {
+            await new Promise(resolve => setTimeout(resolve, 100)); // Check every 100ms
+        }
+        
+        // Restore original debugLog
+        window.debugLog = originalDebugLog;
+        
+        if (!foundDumpData) {
+            debugLog('No EEPROM dump detected. Check hardware response.', 'errors');
+            return;
+        }
+        
+        if (!dumpComplete) {
+            if (Date.now() - startTime >= timeout) {
+                debugLog('Timeout waiting for EEPROM dump to complete', 'errors');
+            } else {
+                debugLog('EEPROM dump incomplete', 'errors');
+            }
+            return;
+        }
+        
+        if (hexLines.length === 0) {
+            debugLog('No hex data found in EEPROM dump', 'errors');
+            return;
+        }
+        
+        // Create hex file content
+        const hexContent = hexLines.join('\n') + '\n';
+        
+        // Download dump.hex to browser default downloads
+        const blob = new Blob([hexContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'dump.hex';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        debugLog(`EEPROM dump successful! ${hexLines.length} hex records saved to dump.hex`, 'success');
+        
+    } catch (err) {
+        debugLog(`Error during EEPROM dump: ${err.message}`, 'errors');
+    }
+}

@@ -73,6 +73,21 @@ def calculate_checksum(data_bytes):
     checksum = sum(data_bytes) & 0xFF
     return ((~checksum) + 1) & 0xFF
 
+def check_serial_input():
+    """Check for serial input commands"""
+    if supervisor.runtime.serial_bytes_available:
+        try:
+            # Read available bytes
+            input_bytes = supervisor.runtime.serial_bytes_available
+            if input_bytes > 0:
+                # Read the input (this is a simplified approach)
+                # In practice, you might need to buffer input until you get a complete command
+                command = input().strip().lower()
+                return command
+        except:
+            pass
+    return None
+
 def dump_eeprom_to_hex():
     """Read entire EEPROM and output in Intel HEX format"""
     print_serial("")
@@ -400,7 +415,6 @@ def process_and_program_hex_file(filename):
 
 # Track processed files to avoid reprocessing
 processed_files = set()
-dump_processed = False  # Track if dump.txt has been processed
 programming_complete = False
 
 # Main program
@@ -460,49 +474,24 @@ set_led_color(COLOR_OFF)
 
 while True:
     try:
-        # Check for dump.txt file first
+
+        # Check for serial commands first
+        serial_command = check_serial_input()
+        if serial_command == "dumpall":
+            print_serial("Received dumpall command - starting EEPROM dump...")
+            success = dump_eeprom_to_hex()
+            
+            if success:
+                print_serial("EEPROM dump completed successfully")
+            else:
+                print_serial("EEPROM dump failed")
+            
+            # Brief delay after dump operation
+            time.sleep(1)
+            set_led_color(COLOR_OFF)
+            continue
+
         files = os.listdir("/")
-        if "dump.txt" in files and not dump_processed:
-            # Check if dump.txt has content (non-zero size)
-            try:
-                file_stats = os.stat("/dump.txt")
-                if file_stats[6] > 0:  # file_stats[6] is the file size
-                    print_serial("Found dump.txt - starting EEPROM dump...")
-                    success = dump_eeprom_to_hex()
-                    
-                    # Mark dump as processed regardless of success/failure
-                    dump_processed = True
-                    
-                    if success:
-                        print_serial("EEPROM dump completed successfully")
-                    else:
-                        print_serial("EEPROM dump failed")
-                    
-                    # Brief delay after dump operation
-                    time.sleep(1)
-                    set_led_color(COLOR_OFF)
-                    continue
-                else:
-                    # Zero-byte dump.txt file - ignore it but don't mark as processed
-                    # so it can be processed later if content is added
-                    pass
-            except:
-                # If we can't check the file size, assume it's valid and process it
-                print_serial("Found dump.txt - starting EEPROM dump...")
-                success = dump_eeprom_to_hex()
-                
-                # Mark dump as processed regardless of success/failure
-                dump_processed = True
-                
-                if success:
-                    print_serial("EEPROM dump completed successfully")
-                else:
-                    print_serial("EEPROM dump failed")
-                
-                # Brief delay after dump operation
-                time.sleep(1)
-                set_led_color(COLOR_OFF)
-                continue
         
         # Check for HEX files
         # Only process files that end with .hex, don't start with a dot, and haven't been processed

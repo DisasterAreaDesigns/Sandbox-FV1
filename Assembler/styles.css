@@ -275,7 +275,7 @@ h2 + div {
 .instructions-text,
 .options,
 .output-controls {
-    margin: 20px 0;
+    margin: 8px 0;
     padding: 10px 15px;
     background-color: #f8f8f8;
     border-radius: 4px;
@@ -938,7 +938,7 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
 .options {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 8px;
 }
 
 .options > div {
@@ -1120,7 +1120,7 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
 }
 
 .flyout-section h4 {
-    margin: 0 0 15px 0;
+    margin: 0 0 0px 0;
     font-size: 1.1em;
     font-weight: 600;
     color: var(--flyout-text, #333);
