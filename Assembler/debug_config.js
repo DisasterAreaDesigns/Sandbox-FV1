@@ -1,7 +1,7 @@
 /**
  * DebugConfig.js - Global debug configuration system
  * 
- * Centralized debug control for the entire FXCore assembler system
+ * Centralized debug control for the entire SpinASM assembler system
  */
 
 class DebugConfig {

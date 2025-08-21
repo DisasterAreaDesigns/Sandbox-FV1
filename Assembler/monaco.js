@@ -165,7 +165,7 @@ require(['vs/editor/editor.main'], function() {
     // Change tracking functions
     function updateChangeState() {
         const currentContent = editor.getValue();
-        const placeholderText = "; Enter your FXCore assembly code here, load a file, or select an example";
+        const placeholderText = "; Enter your SpinASM assembly code here, load a file, or select an example";
         
         // Don't track changes for placeholder text or empty content
         if (currentContent === placeholderText || currentContent.trim() === '') {
@@ -183,7 +183,7 @@ require(['vs/editor/editor.main'], function() {
 
     function updateUIChangeIndicators() {
         // Update page title
-        const baseTitle = 'FXCore Assembler';
+        const baseTitle = 'FV-1 Assembler';
         document.title = hasUnsavedChanges ? `${baseTitle} *` : baseTitle;
         
         // // Update save button appearance if it exists

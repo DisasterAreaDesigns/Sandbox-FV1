@@ -18,7 +18,7 @@ async function selectOutputDirectory() {
             
             // Update clear hardware button state
             updateClearHardwareButton();
-
+            updateDownloadButtonStates();
             updateHardwareConnectionStatus();
             
             // Try to find and read the hardware identifier JSON file
