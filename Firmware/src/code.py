@@ -14,6 +14,11 @@ control_pin = digitalio.DigitalInOut(board.GP2)
 control_pin.direction = digitalio.Direction.OUTPUT
 control_pin.value = True  # Keep high by default
 
+# Set up LED pin for user notifications
+led_pin = digitalio.DigitalInOut(board.GP3)
+led_pin.direction = digitalio.Direction.OUTPUT
+led_pin.value = False # turn off by default
+
 # Set up WS2812 RGB LED on GP16
 pixel = neopixel.NeoPixel(board.GP16, 1, brightness=1.0, auto_write=True, pixel_order='GRB')
 
@@ -51,20 +56,28 @@ def print_serial(message):
 def set_led_color(color):
     """Set the WS2812 LED color"""
     pixel[0] = color
+
+def set_status_led(state):
+    """Set the status LED (GP3) on/off"""
+    led_pin.value = state
     
 def blink_led_once(color, duration=0.2):
-    """Blink the LED once quickly with specified color"""
+    """Blink both LEDs once quickly with specified color"""
     set_led_color(color)
+    set_status_led(True)
     time.sleep(duration)
     set_led_color(COLOR_OFF)
+    set_status_led(False)
     time.sleep(duration)
 
 def blink_led_pattern(color, on_time=0.1, off_time=0.1, count=3):
-    """Blink the LED in a pattern with specified color"""
+    """Blink both LEDs in a pattern with specified color"""
     for _ in range(count):
         set_led_color(color)
+        set_status_led(True)
         time.sleep(on_time)
         set_led_color(COLOR_OFF)
+        set_status_led(False)
         time.sleep(off_time)
 
 def parse_hex_line(line):
@@ -172,8 +185,9 @@ def process_and_program_hex_file(filename):
     min_addr = None
     max_addr = None
     
-    # Turn on DIM BLUE LED while processing files
+    # Turn off LEDs while processing files
     set_led_color(COLOR_OFF)
+    set_status_led(False)
     
     try:
         # Open and parse the HEX file - first pass to validate
@@ -224,6 +238,7 @@ def process_and_program_hex_file(filename):
         if len(all_bytes) == 0:
             print_serial("Ignoring zero-byte hex file: {}".format(filename))
             set_led_color(COLOR_OFF)
+            set_status_led(False)
             return True  # Return True so file gets marked as processed
         
         # Determine expected parameters based on filename
@@ -242,6 +257,7 @@ def process_and_program_hex_file(filename):
         if line_count != expected_lines:
             print_serial("ERROR: {} must have exactly {} lines, but has {} lines".format(base_filename, expected_lines, line_count))
             set_led_color(COLOR_RED)
+            set_status_led(True)
             return False
         
         # Validate address range
@@ -249,6 +265,7 @@ def process_and_program_hex_file(filename):
             print_serial("ERROR: {} must have address range 0x{:03X}-0x{:03X}, but has 0x{:03X}-0x{:03X}".format(
                 base_filename, expected_min_addr, expected_max_addr, min_addr or 0, max_addr or 0))
             set_led_color(COLOR_RED)
+            set_status_led(True)
             return False
         
         print_serial("Validation passed: {} lines, address range 0x{:03X}-0x{:03X}".format(line_count, min_addr, max_addr))
@@ -268,6 +285,7 @@ def process_and_program_hex_file(filename):
             if not clear_entire_eeprom():
                 print_serial("Failed to clear EEPROM for all.hex")
                 set_led_color(COLOR_RED)
+                set_status_led(True)
                 return False
         
         # Program the EEPROM in pages (32 bytes per page for 24LC32A)
@@ -276,8 +294,9 @@ def process_and_program_hex_file(filename):
         
         print_serial("Programming EEPROM with " + str(total_bytes) + " bytes")
         
-        # Start with dim blue LED during programming
+        # Start with dim blue LEDs during programming
         set_led_color(COLOR_DIM_BLUE)
+        set_status_led(True)
         
         for i in range(0, total_bytes, page_size):
             # Get the data for this page
@@ -294,6 +313,7 @@ def process_and_program_hex_file(filename):
             if not result:
                 print_serial("Error writing page at address 0x{:04X}".format(eeprom_addr))
                 set_led_color(COLOR_OFF)
+                set_status_led(False)
                 return False
         
         # Programming complete - exit programming mode
@@ -322,14 +342,16 @@ def process_and_program_hex_file(filename):
         if base_filename == "all.hex":
             print_serial("ENTIRE EEPROM PROGRAMMED with all.hex")
         
-        # Indicate file programming success with GREEN LED
+        # Indicate file programming success with GREEN LEDs
         set_led_color(COLOR_GREEN)
+        set_status_led(True)
         
         return True
     
     except Exception as e:
         print_serial("Error processing file: " + str(e))
         set_led_color(COLOR_OFF)
+        set_status_led(False)
         return False
 
 # Track processed files to avoid reprocessing
@@ -340,7 +362,7 @@ programming_complete = False
 print_serial("HEX File to EEPROM Programmer")
 print_serial("Running on: " + board.board_id)
 print_serial("I2C EEPROM address: 0x{:02X}".format(EEPROM_ADDR))
-print_serial("WS2812 RGB LED on GP16:")
+print_serial("WS2812 RGB LED on GP16 + Status LED on GP3:")
 print_serial("  OFF = idle/waiting")
 print_serial("  DIM BLUE = writing file")
 print_serial("  GREEN = file write successful")
@@ -360,7 +382,7 @@ print_serial("Default address for other files: 0x{:04X} (requires 129 lines, 0x0
 try:
     if not i2c.try_lock():
         print_serial("Could not lock I2C bus")
-        # Blink RED to indicate I2C error
+        # Blink both LEDs RED to indicate I2C error
         blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
     else:
         devices = i2c.scan()
@@ -371,7 +393,7 @@ try:
         else:
             print_serial("WARNING: EEPROM not detected at address 0x{:02X}".format(EEPROM_ADDR))
             print_serial("Available I2C devices: " + ", ".join(["0x{:02X}".format(addr) for addr in devices]))
-            # Blink RED to indicate EEPROM not found
+            # Blink both LEDs RED to indicate EEPROM not found
             blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
 except Exception as e:
     print_serial("I2C initialization error: " + str(e))
@@ -379,15 +401,16 @@ except Exception as e:
         i2c.unlock()  # Try to unlock in case it's already locked
     except:
         pass
-    # Blink RED to indicate error
+    # Blink both LEDs RED to indicate error
     blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
 
 # Make sure control pin is HIGH at startup
 control_pin.value = True
 print_serial("Control pin set HIGH at startup")
 
-# Set LED to OFF for startup
+# Set both LEDs to OFF for startup
 set_led_color(COLOR_OFF)
+set_status_led(False)
 
 while True:
     try:
@@ -409,8 +432,9 @@ while True:
                 print_serial("")
                 print_serial("Found all.hex - processing as complete EEPROM image")
                 
-                # Switch to dim blue during processing
+                # Switch to dim blue LEDs during processing
                 set_led_color(COLOR_DIM_BLUE)
+                set_status_led(True)
                 
                 # Process only the all.hex file
                 success = process_and_program_hex_file("/all.hex")
@@ -440,18 +464,22 @@ while True:
                         if len(all_bytes_check) > 0:
                             print_serial("Successfully programmed entire EEPROM with all.hex")
                             actually_programmed = True
-                            # LED stays green after successful write
+                            # LEDs stay green after successful write
                             set_led_color(COLOR_GREEN)
+                            set_status_led(True)
                         else:
                             print_serial("all.hex was zero-byte file - no programming needed")
                             set_led_color(COLOR_OFF)
+                            set_status_led(False)
                     except:
                         # If we can't re-check, assume it was programmed since success was True
                         actually_programmed = True
                         set_led_color(COLOR_GREEN)
+                        set_status_led(True)
                 else:
-                    # Turn off LED on error
+                    # Turn off LEDs on error
                     set_led_color(COLOR_RED)
+                    set_status_led(True)
                 
                 # After all.hex processing, toggle control pin ONLY if we actually programmed
                 if success and actually_programmed:
@@ -463,8 +491,9 @@ while True:
                     print_serial("Programming mode complete (GP3 toggled)")
                     programming_complete = True
                     
-                    # Return to dim blue after programming complete
+                    # Return to dim blue LEDs after programming complete
                     set_led_color(COLOR_DIM_BLUE)
+                    set_status_led(False)
             
             else:
                 # Process individual hex files normally
@@ -472,8 +501,9 @@ while True:
                     print_serial("")
                     print_serial("Found HEX file: " + hex_file)
                     
-                    # Switch to dim blue during processing
+                    # Switch off LEDs during processing
                     set_led_color(COLOR_OFF)
+                    set_status_led(False)
                     
                     # Process the file and program the EEPROM
                     success = process_and_program_hex_file("/" + hex_file)
@@ -501,22 +531,26 @@ while True:
                                         f.write("Programmed on " + str(time.monotonic()))
                                 except:
                                     pass
-                                # LED stays green after successful write
+                                # LEDs stay green after successful write
                                 set_led_color(COLOR_GREEN)
+                                set_status_led(True)
                             else:
                                 print_serial(hex_file + " was zero-byte file - no programming needed")
                         except:
                             # If we can't re-check, assume it was programmed since success was True
                             actually_programmed = True
                             set_led_color(COLOR_GREEN)
+                            set_status_led(True)
                     else:
-                        # Turn off LED on error
+                        # Turn off LEDs on error
                         set_led_color(COLOR_RED)
+                        set_status_led(True)
                         break
                     
-                    # Turn off LED between writes
+                    # Turn off LEDs between writes
                     if hex_file != hex_files[-1]:
                         set_led_color(COLOR_OFF)
+                        set_status_led(False)
                         time.sleep(0.05)  # Brief delay between files
                 
                 # After all files are written, toggle control pin once ONLY if we actually programmed
@@ -529,16 +563,18 @@ while True:
                     print_serial("Programming mode complete (GP3 toggled)")
                     programming_complete = True
                     
-                    # Return to dim blue after programming complete
+                    # Return to dim blue LEDs after programming complete
                     set_led_color(COLOR_DIM_BLUE)
+                    set_status_led(False)
         
         # Delay before checking again
         time.sleep(0.1)
     
     except Exception as e:
         print_serial("Error in main loop: " + str(e))
-        # Indicate error with RED blinking
+        # Indicate error with both LEDs blinking RED
         blink_led_pattern(COLOR_RED, 0.05, 0.05, 5)
         # Return to OFF idle state
         set_led_color(COLOR_OFF)
+        set_status_led(False)
         time.sleep(5)  # Longer delay if there's an error
