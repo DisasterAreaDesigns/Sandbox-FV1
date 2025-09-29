@@ -524,6 +524,7 @@ async function clearEditor() {
     document.getElementById('output').value = '';
     document.getElementById('messages').innerHTML = '';
     assembledData = null;
+    updateFilenameDisplay();
     updateDownloadButtonStates();
 }
 
@@ -1007,6 +1008,7 @@ async function loadExample(exampleName) {
         document.getElementById('messages').innerHTML = '';
         assembledData = null;
         updateDownloadButtonStates();
+        updateFilenameDisplay();
         debugLog('Example loaded successfully', 'success');
     }
 }
@@ -1072,6 +1074,18 @@ async function loadFile() {
     fileInput.click(); // This will trigger handleFileInputChange when user selects a file
 }
 
+function updateFilenameDisplay() {
+    const displayElement = document.getElementById('currentFilenameDisplay');
+    if (!displayElement) return;
+    
+    let filename = '';
+    if (window.getCurrentFilename) {
+        filename = window.getCurrentFilename();
+    }
+    
+    displayElement.textContent = filename ? `(${filename})` : '';
+}
+
 // Extract the file processing logic into a separate function
 function processFileContent(content, fileName) {
     // Update editor content
@@ -1104,6 +1118,8 @@ function processFileContent(content, fileName) {
     if (typeof updateDownloadButtonStates !== 'undefined') {
         updateDownloadButtonStates();
     }
+
+    updateFilenameDisplay();
     
     // // Clear C header data
     // if (typeof FXCoreAssembler !== 'undefined') {
@@ -1160,6 +1176,7 @@ async function saveSource() {
         if (window.updateOriginalContent) {
             window.updateOriginalContent();
         }
+        updateFilenameDisplay();
         
         return true;
     }
