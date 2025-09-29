@@ -28,11 +28,12 @@
                         <text x="32" y="40" text-anchor="middle" fill="white" font-family="League Spartan" font-size="20" font-weight="bold">FV1</text>
                     </svg>
                 </a>
-                <span class="build">build 16</span>
+                <span class="build">build 17</span>
             </div>
         </div>
 
-        <h2>Source Input</h2>
+        <!-- <h2>Source Input</h2> -->
+        <h2>Source Input<span id="currentFilenameDisplay" style="margin-left: 15px; font-weight: normal; color: #666;"></span></h2>
         <div class="file-input">
             <input type="file" id="fileInput" accept=".asm,.txt,.spn" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -52,51 +53,6 @@
             <div id="editor" style="width: 100%; height: 400px;"></div>
         </div>
 
-        <!-- Editor Options Section -->
-        <div class="editor-options-section">
-            <h3 onclick="toggleEditorOptions()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
-                <span id="editorOptionsToggle">▶</span> Editor Options
-            </h3>
-            <div id="editorOptionsContent" class="editor-options-content collapsed">
-                <div class="options">
-                    <div class="project-folder-section">
-                        <button id="projectFolderBtn" class="project-folder-button" onclick="selectProjectDirectory()">
-                            Select Project Folder
-                        </button>
-                        <span id="projectFolderLabel" style="margin-left: 10px; color: #666; font-style: italic;">No directory selected</span>
-                    </div><br>
-                    <label>
-                        <input type="checkbox" id="editorHeightToggle" onchange="toggleEditorHeightWithSave()"> Large editor window
-                    </label>
-                    <label>
-                        <input type="checkbox" id="minimapToggle" onchange="toggleMinimapWithSave()"> Show editor mini-map
-                    </label>
-                    <label>
-                        <input type="checkbox" id="debugToggle" onchange="toggleDebugPresetWithSave()"> Show full build results
-                    </label>
-                    <label>
-                        Theme: 
-                        <select id="darkModeSelect">
-                            <option value="system">System</option>
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="editor-help-text">
-                    <label>
-                        <span class="shortcut">Editor Shortcuts active when cursor is in editor window:</span>
-                        <span class="shortcut">Ctrl+F / ⌘+F Find</span>
-                        <span class="shortcut">Ctrl+Shift+F / ⌘+⌥+F Replace</span>
-                        <span class="shortcut">F3 Find Next</span>
-                    </label><br>
-                    <label>
-                        <span class="shortcut">Editor accepts ASCII text only</span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
         <div>
             <button onclick="assemble()">Assemble</button>
             <button onclick="downloadPlainHex()" id="downloadPlainHexBtn" disabled>Download HEX</button>
@@ -113,39 +69,8 @@
 
         <!-- Hardware Options Section -->
         <div class="hardware-options-section">
-            <h3 onclick="toggleHardwareOptions()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
-                <span id="hardwareOptionsToggle">▶</span> Hardware Options
-                <span id="hardwareConnectionStatus" style="font-weight: normal; color: #666; margin-left: 10px; font-size: 0.9em;">No connection</span>
+            <span id="hardwareConnectionStatus" style="font-weight: normal; color: #666; margin-left: 10px; font-size: 0.9em;">No connection</span>
             </h3>
-            <div id="hardwareOptionsContent" class="hardware-options-content collapsed">
-                <div class="output-controls">
-                    <div>
-                        <button onclick="selectOutputDirectory()" id="selectDirBtn">Select Output Directory</button>
-                        <span id="outputDirDisplay" style="margin-left: 10px; color: #666; font-style: italic;">No directory selected</span>
-                    </div><br />
-                    <div>
-                        <button onclick="serialConnect()">Select Serial Port</button>
-                        <span id="serialPortDisplay" style="margin-left: 10px; color: #666; font-style: italic;">No port selected</span>
-                    </div>
-                    <!-- Filename / Toggle Position Grid -->
-                    <div style="margin-top: 10px;">
-                        Filename / Toggle Position:
-                        <span id="filenameLabel" style="font-weight: bold; margin-left: 5px; color: #333;">(none selected)</span>
-                        <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 14px;margin-bottom: 14px;">
-                            <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">▲ 2 ▲</button>
-                            <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">▲ 6 ▼</button>
-                            <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">◉ 3 ▲</button>
-                            <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">◉ 7 ▼</button>
-                            <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">▼ 1 ▲</button>
-                            <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">▼ 5 ▼</button>
-                            <button class="filename-btn" data-filename="0.hex" onclick="selectFilename(this)">0 (BYPASS)</button>
-                            <button class="filename-btn" data-filename="4.hex" onclick="selectFilename(this)">4 (Not Used)</button>
-                        </div>
-                        <br>
-                        ▲ = switch up, ◉ = switch mid, ▼ = switch down
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="download-buttons">
@@ -162,56 +87,6 @@
             </h3>
             <div id="outputContent" class="output-content collapsed">
                 <textarea id="output" readonly placeholder="FV-1 assembly output will appear here..."></textarea>
-            </div>
-        </div>
-
-        <div class="instructions-section">
-            <h3 onclick="toggleInstructions()" style="cursor: pointer; user-select: none; margin-bottom: 10px;">
-                <span id="instructionsToggle">▶</span> Instructions & Help
-            </h3>
-            <div id="instructionsContent" class="instructions-content collapsed">
-                <div class="instructions-text">
-                    <div>
-                        <h4>Getting Started</h4>
-                        <p>This web application is designed to assemble SpinASM source code into machine instructions for the FV-1 DSP chip. Generated machine code may be saved locally for later use, or sent to a <b>Sandbox FV1</b> hardware target to hear the results.</p>
-                        <ul>
-                            <li><i>Enter SpinASM source code into the editor area, or select a file or example. Press the <b>Assemble</b> button to verify and assemble the code into a HEX file</i></li>
-                            <li><i>Press the <b>Download HEX</b> to save the resulting HEX file to your local Downloads folder. Check the <b>Build Results</b> for success or error messages.</i></li>
-                            <li><i><b>Download Binary</b> and <b>Download C Headers</b> output the assembled data in alternate format for use with more advanced applications and are not used with <b>Sandbox FV1</b> hardware</i></li>
-                            <li><i>When satisfied with your source code, press the <b>Save Source...</b> button to download a local copy.</i></li>
-                        </ul>
-                        <h4>Connecting to Hardware</h4>
-                        <p><i>Connect your <b>Sandbox FV1</b> pedal to your computer using a suitable USB cable. A new removable drive labeled <b>SANDBOX-FV1</b> should appear.</i></p>
-                        <ul>
-                            <li>Open the <b>Hardware Options</b> section to <b>Select Output Directory</b> button to specify the path to your <b>Sandbox FV1</b> (typically /SANDBOX-FV1).</li>
-                            <li><i>Use the <b>Filename / Toggle Position</b> buttons to select the destination slot on your hardware device</i></li>
-                            <li><i>Press the <b>Download to Hardware</b> button to save your algorithm to the <b>Sandbox FV1</b> hardware unit</i></li>
-                        </ul>
-                        <h4>Troubleshooting</h4>
-                        <p>Errors and warnings will appear in the Build Results window and are often helpful for troubleshooting. Scroll up to the top to see previous messages</p>
-                        <ul>
-                            <li>Error information not helpful - use <b>Editor Options - Show full build results</b> to see more detailed info</li>
-                            <li>File transfer problems - <i>ensure proper directory permissions</i></li>
-                            <li>Assembly errors - <i>check syntax and register usage</i></li>
-                            <li>Connection issues - <i>verify USB cable and folder selection</i></li>
-                        </ul>
-                        <h4>What do these Options do?</h4>
-                        <p>These are some settings that change various editor settings</p>
-                        <ul>
-                            <h3>Editor Options</h3>
-                            <li>Select Project Folder: <i>Choose path to save HEX, binary, header, and source files</i></li>
-                            <li>Large editor window: <i>Expands editor text area to show more instructions</i></li>
-                            <li>Theme: <i>Use light, dark, or system color theme</i></li>
-                            <li>Show editor mini-map: <i>Show a small navigation map in editor</i></li>
-                            <li>Show full build results: <i>Show complete debug information in <b>Build Results</b> window</i></li>
-                        </ul>
-                        <ul>
-                            <h3>Hardware Options</h3>
-                            <li>Select Output Directory: <i>Specify the folder location of your <b>Sandbox FV</b> hardware (typically /SANDBOX-FV1)</i></li>
-                            <li>Filename / Toggle Position: <i>Select the destination slot on your hardware device</i></li>
-                        </ul>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -270,124 +145,29 @@
         </footer>
 
         <script>
-
-            // Toggle functions for new sections
-            function toggleEditorOptions() {
-                const editorOptionsContent = document.getElementById('editorOptionsContent');
-                const editorOptionsToggle = document.getElementById('editorOptionsToggle');
-
-                if (editorOptionsContent.classList.contains('collapsed')) {
-                    editorOptionsContent.classList.remove('collapsed');
-                    editorOptionsToggle.textContent = '▼';
-                } else {
-                    editorOptionsContent.classList.add('collapsed');
-                    editorOptionsToggle.textContent = '▶';
-                }
-            }
-
-            function toggleHardwareOptions() {
-                const hardwareOptionsContent = document.getElementById('hardwareOptionsContent');
-                const hardwareOptionsToggle = document.getElementById('hardwareOptionsToggle');
-
-                if (hardwareOptionsContent.classList.contains('collapsed')) {
-                    hardwareOptionsContent.classList.remove('collapsed');
-                    hardwareOptionsToggle.textContent = '▼';
-                } else {
-                    hardwareOptionsContent.classList.add('collapsed');
-                    hardwareOptionsToggle.textContent = '▶';
-                }
-            }
-
-            // // Download plain HEX function to match FXCore interface
-            // async function downloadPlainHex() {
-            //     if (!assembledData) {
-            //         debugLog('No assembled data available', 'errors');
-            //         return false;
-            //     }
-
-            //     const hex = document.getElementById('output').value;
-                
-            //     if (!hex || hex.trim() === '') {
-            //         debugLog('No hex data to download', 'errors');
-            //         return false;
-            //     }
-
-            //     let defaultFilename = 'fv1_output.hex';
-                
-            //     // Try to use File System Access API first
-            //     if ('showSaveFilePicker' in window) {
-            //         try {
-            //             const fileHandle = await window.showSaveFilePicker({
-            //                 suggestedName: defaultFilename,
-            //                 types: [{
-            //                     description: 'Intel HEX files',
-            //                     accept: {
-            //                         'application/octet-stream': ['.hex']
-            //                     }
-            //                 }]
-            //             });
-                        
-            //             const writable = await fileHandle.createWritable();
-            //             await writable.write(hex);
-            //             await writable.close();
-                        
-            //             debugLog('HEX file saved: ' + fileHandle.name, 'success');
-            //             return true;
-                        
-            //         } catch (err) {
-            //             if (err.name === 'AbortError') {
-            //                 return false; // User cancelled
-            //             } else {
-            //                 debugLog('Error saving with file picker: ' + err.message, 'errors');
-            //                 // Fall back to blob download
-            //             }
-            //         }
-            //     }
-                
-            //     // Fallback for browsers that don't support File System Access API
-            //     const browserSupported = await showConfirmDialog(
-            //         'Download HEX File', 
-            //         'Your browser doesn\'t support the advanced file picker. The file will be downloaded to your default downloads folder. Continue?'
-            //     );
-                
-            //     if (!browserSupported) return false;
-                
-            //     // Always download as file (no hardware interaction)
-            //     downloadFile(defaultFilename, hex, 'application/octet-stream');
-            //     debugLog(`File downloaded as ${defaultFilename} to default downloads folder`, 'success');
-            //     return true;
-            // }
-
-            // // Update hardware connection status
-            // function updateHardwareConnectionStatus() {
-            //     const statusElement = document.getElementById('hardwareConnectionStatus');
-            //     if (!statusElement) return;
-
-            //     let statusText = 'No connection';
-            //     let statusColor = '#666';
-
-            //     // Check file mode connection (output directory)
-            //     if (outputDirectoryHandle) {
-            //         const filenameSelected = selectedFilename !== null;
-            //         const slotDisplay = filenameSelected ? selectedFilename.replace('.hex', '') : 'none';
-            //         statusText = `Directory: ${outputDirectoryHandle.name}, Slot: ${slotDisplay}`;
-            //         statusColor = '#28a745'; // Green
-            //     } else {
-            //         const slotDisplay = selectedFilename ? selectedFilename.replace('.hex', '') : 'none';
-            //         statusText = `No directory, Slot: ${slotDisplay}`;
-            //     }
-
-            //     statusElement.textContent = statusText;
-            //     statusElement.style.color = statusColor;
-            // }
-
             // Initialize the FV-1 assembler when the page loads
             document.addEventListener('DOMContentLoaded', function() {
                 DEBUG.reset();
-                
-                // Add event listener for file input change
-                // document.getElementById('fileInput').addEventListener('change', loadFile);
 
+                const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+                // Show/hide platform-specific shortcuts
+                if (isMac) {
+                    document.querySelectorAll('.mac-only').forEach(el => {
+                        el.style.display = 'block';
+                    });
+                    document.querySelectorAll('.windows-only').forEach(el => {
+                        el.style.display = 'none';
+                    });
+                } else {
+                    document.querySelectorAll('.windows-only').forEach(el => {
+                        el.style.display = 'block';
+                    });
+                    document.querySelectorAll('.mac-only').forEach(el => {
+                        el.style.display = 'none';
+                    });
+                }
+                
                 // Add hidden checkboxes that the assembler expects
                 const hiddenCheckboxes = document.createElement('div');
                 hiddenCheckboxes.style.display = 'none';
@@ -412,7 +192,357 @@
                 DEBUG.showConfig();
 
                 debugLog('FV-1 assembler libraries loaded', 'info');
+                
+                // Initialize FV-1 opcodes content
+                initializeFV1OpcodesContent();
             });
+
+            // Toggle functions for sections
+            function toggleOutput() {
+                const outputContent = document.getElementById('outputContent');
+                const outputToggle = document.getElementById('outputToggle');
+
+                if (outputContent.classList.contains('collapsed')) {
+                    outputContent.classList.remove('collapsed');
+                    outputToggle.textContent = '▼';
+                } else {
+                    outputContent.classList.add('collapsed');
+                    outputToggle.textContent = '▶';
+                }
+            }
+            
+            // FV-1 Opcodes data and initialization
+            function initializeFV1OpcodesContent() {
+                const fv1Data = {
+                    "title": "FV-1 Instruction Set Reference",
+                    "version": "SpinSemi FV-1 DSP",
+                    "categories": {
+                        "memory-operations": {
+                            "name": "Memory Operations",
+                            "opcodes": [
+                                {
+                                    "name": "RDA",
+                                    "syntax": "RDA memaddress, coefficient",
+                                    "description": "Read delay memory times coefficient and add to accumulator",
+                                    "notes": "• Coefficient width is 11 bits, ranging -2.0 to +1.998\n• Read data from delay memory is simultaneously loaded into the LR register\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "RMPA",
+                                    "syntax": "RMPA coefficient",
+                                    "description": "Read delay memory from addr_ptr location, multiply by coefficient and add to accumulator",
+                                    "notes": "• addr_ptr is a special register reserved for delay memory addressing\n• Coefficient width is 11 bits, ranging -2.0 to +1.998\n• Read data from delay memory is simultaneously loaded into the LR register\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "WRA",
+                                    "syntax": "WRA memaddress, coefficient",
+                                    "description": "Write ACC to delay memory location and multiply ACC by coefficient",
+                                    "notes": "• Coefficient width is 11 bits, ranging -2.0 to +1.998\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "WRAP",
+                                    "syntax": "WRAP memaddress, coefficient",
+                                    "description": "Write delay memory, multiply written value by coefficient, add to LR register and load ACC with result",
+                                    "notes": "• Used specifically in producing inline all pass filters for reverb\n• Coefficient width is 11 bits, ranging -2.0 to +1.998\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "MEM",
+                                    "syntax": "MEM label length",
+                                    "description": "Define the length of delay memory elements and associate an address label",
+                                    "notes": "• When writing to a delay, use the address label\n• When reading the end of delay, use label#\n• When reading the midpoint of delay, use label$"
+                                }
+                            ]
+                        },
+                        "register-operations": {
+                            "name": "Register Operations",
+                            "opcodes": [
+                                {
+                                    "name": "RDAX",
+                                    "syntax": "RDAX register, coefficient",
+                                    "description": "Read register value, multiply by coefficient and add to ACC",
+                                    "notes": "• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "RDFX",
+                                    "syntax": "RDFX register, coefficient",
+                                    "description": "Subtract register contents from ACC, multiply by coefficient, add register contents and load to ACC",
+                                    "notes": "• Used specifically for the construction of filters\n• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC\n• Use RDFX reg,1 to load a register directly to the accumulator"
+                                },
+                                {
+                                    "name": "WRAX",
+                                    "syntax": "WRAX register, coefficient",
+                                    "description": "Write ACC to register, multiply ACC by coefficient",
+                                    "notes": "• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "WRHX",
+                                    "syntax": "WRHX register, coefficient",
+                                    "description": "Write ACC to register, multiply ACC by coefficient, add PACC and load result to ACC",
+                                    "notes": "• Used in creating single pole, shelving high pass filters\n• The coefficient should be negative for shelf gain\n• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "WRLX",
+                                    "syntax": "WRLX register, coefficient",
+                                    "description": "Write ACC to register, subtract ACC from PACC, multiply result by coefficient, then add PACC and load result to ACC",
+                                    "notes": "• Used in creating single pole, shelving low pass filters\n• The coefficient should be negative for shelf gain\n• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "MAXX",
+                                    "syntax": "MAXX register, coefficient",
+                                    "description": "Load the maximum of the absolute value of the register times coefficient or the absolute value of ACC to ACC",
+                                    "notes": "• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC\n• Ideal for delivering a peak detected signal to a low pass filter"
+                                },
+                                {
+                                    "name": "MULX",
+                                    "syntax": "MULX register",
+                                    "description": "Load the accumulator with the product of ACC and a register",
+                                    "notes": "• The upper 15 bits of the register are used as a coefficient\n• Allows a multiplier range of -1.0 to +0.999389\n• Previous ACC value is simultaneously loaded into PACC"
+                                }
+                            ]
+                        },
+                        "math-operations": {
+                            "name": "Math Operations",
+                            "opcodes": [
+                                {
+                                    "name": "SOF",
+                                    "syntax": "SOF coefficient, constant",
+                                    "description": "Multiply ACC by the coefficient value and add a constant (Scale and Offset)",
+                                    "notes": "• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Constant width is 11 bits, -1.0 to +0.999\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "LOG",
+                                    "syntax": "LOG coefficient, constant",
+                                    "description": "Take the LOG base 2 of the absolute value of the accumulator, divide result by 16, multiply by coefficient, add constant and load to ACC",
+                                    "notes": "• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Constant width is 11 bits, -1.0 to +0.999\n• Previous ACC value is simultaneously loaded into PACC\n• Used with EXP for divides and square roots"
+                                },
+                                {
+                                    "name": "EXP",
+                                    "syntax": "EXP coefficient, constant",
+                                    "description": "Raise 2 to the power of the accumulator*16, multiply by coefficient and add constant, loading result to ACC",
+                                    "notes": "• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Constant width is 11 bits, -1.0 to +0.999\n• Previous ACC value is simultaneously loaded into PACC\n• Used with LOG for divides and square roots"
+                                },
+                                {
+                                    "name": "ABSA",
+                                    "syntax": "ABSA",
+                                    "description": "Changes the ACC contents to absolute value of ACC",
+                                    "notes": "• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "NOT",
+                                    "syntax": "NOT",
+                                    "description": "Change sign of ACC value",
+                                    "notes": "• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "CLR",
+                                    "syntax": "CLR",
+                                    "description": "Clear ACC",
+                                    "notes": "• Previous ACC value is simultaneously loaded into PACC"
+                                }
+                            ]
+                        },
+                        "logic-operations": {
+                            "name": "Logic Operations",
+                            "opcodes": [
+                                {
+                                    "name": "AND",
+                                    "syntax": "AND mask",
+                                    "description": "AND ACC with immediate mask",
+                                    "notes": "• Use binary (%011111000000000000000000) or hex ($000001) format\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "OR",
+                                    "syntax": "OR mask",
+                                    "description": "OR ACC with immediate mask",
+                                    "notes": "• Use binary (%011111000000000000000000) or hex ($000001) format\n• Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
+                                    "name": "XOR",
+                                    "syntax": "XOR mask",
+                                    "description": "XOR ACC with immediate mask",
+                                    "notes": "• Use binary (%011111000000000000000000) or hex ($000001) format\n• Previous ACC value is simultaneously loaded into PACC"
+                                }
+                            ]
+                        },
+                        "control-flow": {
+                            "name": "Control Flow",
+                            "opcodes": [
+                                {
+                                    "name": "SKP",
+                                    "syntax": "SKP condition, target",
+                                    "description": "Skip N instructions based on condition",
+                                    "notes": "• Conditions: run (set after first program execution), zrc (sign of ACC and PACC differ), zro (ACC is zero), gez (ACC >= 0), neg (ACC is negative)\n• Target can be number of instructions or label"
+                                },
+                                {
+                                    "name": "EQU",
+                                    "syntax": "EQU label value",
+                                    "description": "Equate a value to a label reference",
+                                    "notes": "• Declare label equates prior to label use\n• Can equate numerical values or register names"
+                                },
+                                {
+                                    "name": "NOP",
+                                    "syntax": "NOP",
+                                    "description": "No operation",
+                                    "notes": "• Does nothing, used for timing or alignment"
+                                }
+                            ]
+                        },
+                        "lfo-generators": {
+                            "name": "LFO & Generators",
+                            "opcodes": [
+                                {
+                                    "name": "WLDS",
+                                    "syntax": "WLDS generator, freq, amp",
+                                    "description": "Load SIN/COS generator with initial conditions",
+                                    "notes": "• Two SIN/COS generators available: SIN0 and SIN1\n• Frequency variable is 9 bits\n• Amplitude variable is 15 bits\n• Usually used at program beginning with SKP run,1"
+                                },
+                                {
+                                    "name": "WLDR",
+                                    "syntax": "WLDR generator, freq, amp",
+                                    "description": "Load RAMP generator with initial conditions",
+                                    "notes": "• Two RAMP generators available: RMP0 and RMP1\n• Frequency variable is 16 bits\n• Amplitude variable is 2 bits: 00=512, 01=1024, 10=2048, 11=4096\n• Usually used at program beginning with SKP run,1"
+                                },
+                                {
+                                    "name": "JAM",
+                                    "syntax": "JAM generator",
+                                    "description": "Force a selected RAMP generator to its starting condition",
+                                    "notes": "• Used in pitch transposition to reset read pointer\n• Useful when input and output are highly correlated"
+                                },
+                                {
+                                    "name": "CHO",
+                                    "syntax": "CHO operation, lfo, flags, address",
+                                    "description": "General operation for reading delay memory from an LFO output as both memory pointer and interpolation coefficient",
+                                    "notes": "• Operations: RDA (read delay with LFO addressing), RDAL (load LFO output), SOF (multiply by LFO crossfade)\n• LFO selection: sin0, sin1, rmp0, rmp1\n• Flags: SIN/COS, REG, COMPC, COMPA, RPTR2, NA\n• Very flexible instruction for LFO-based effects"
+                                }
+                            ]
+                        }
+                    }
+                };
+
+                const labelMap = {
+                    "memory-operations": "MEMORY",
+                    "register-operations": "REGISTER", 
+                    "math-operations": "MATH",
+                    "logic-operations": "LOGIC",
+                    "control-flow": "CONTROL",
+                    "lfo-generators": "LFO"
+                };
+
+                // Create the opcodes content for the info panel
+                const infoPanel = document.querySelector('#infoPanel .flyout-content');
+                if (infoPanel) {
+                    // Clear existing content
+                    infoPanel.innerHTML = '';
+                    
+                    // Create container with sticky nav
+                    const container = document.createElement('div');
+                    container.className = 'opcodes-container';
+
+                    // Create sticky navigation section
+                    const navSection = document.createElement('div');
+                    navSection.className = 'opcodes-nav-section';
+
+                    // // Add version info and keyboard shortcuts
+                    // const headerInfo = document.createElement('div');
+                    // headerInfo.className = 'opcodes-header-info';
+                    
+                    // const versionInfo = document.createElement('p');
+                    // versionInfo.className = 'opcodes-version';
+                    // versionInfo.textContent = fv1Data.version;
+                    // headerInfo.appendChild(versionInfo);
+                    
+                    // // Add keyboard shortcuts info
+                    // const shortcuts = document.createElement('div');
+                    // shortcuts.className = 'opcodes-shortcuts';
+                    
+                    // const shortcutText = document.createElement('span');
+                    // shortcutText.innerHTML = '<strong>ESC</strong> to close • <strong>CTRL+F</strong> to search • <strong>F3</strong> next';
+                    // shortcuts.appendChild(shortcutText);
+                    
+                    // headerInfo.appendChild(shortcuts);
+                    // navSection.appendChild(headerInfo);
+
+                    // Create navigation links with category colors
+                    const navLinks = document.createElement('div');
+                    navLinks.className = 'opcodes-nav-links';
+
+                    Object.entries(fv1Data.categories).forEach(([categoryId, category]) => {
+                        const link = document.createElement('a');
+                        link.className = `opcodes-nav-link opcodes-nav-${categoryId}`;
+                        link.textContent = labelMap[categoryId] ?? category.name;
+                        
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            const el = document.getElementById('opcodes-' + categoryId);
+                            if (el) {
+                                el.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start'
+                                });
+                            }
+                        });
+                        navLinks.appendChild(link);
+                    });
+                    
+                    navSection.appendChild(navLinks);
+                    container.appendChild(navSection);
+
+                    // Create scrollable content area
+                    const contentArea = document.createElement('div');
+                    contentArea.className = 'opcodes-content-area';
+
+                    // Create opcode sections
+                    Object.entries(fv1Data.categories).forEach(([categoryId, category]) => {
+                        const sectionHeader = document.createElement('div');
+                        sectionHeader.className = 'opcodes-section-header';
+                        sectionHeader.id = 'opcodes-' + categoryId;
+                        sectionHeader.textContent = labelMap[categoryId] ?? category.name;
+                        contentArea.appendChild(sectionHeader);
+
+                        category.opcodes.forEach(opcode => {
+                            const card = document.createElement('div');
+                            card.className = 'opcodes-card';
+
+                            const header = document.createElement('div');
+                            header.className = 'opcodes-header';
+
+                            const name = document.createElement('div');
+                            name.className = 'opcodes-name';
+                            name.textContent = opcode.name;
+
+                            const categoryBadge = document.createElement('div');
+                            categoryBadge.className = `opcodes-category opcodes-category-${categoryId}`;
+                            categoryBadge.textContent = labelMap[categoryId] ?? category.name;
+
+                            header.appendChild(name);
+                            header.appendChild(categoryBadge);
+
+                            const syntax = document.createElement('div');
+                            syntax.className = 'opcodes-syntax';
+                            syntax.textContent = opcode.syntax;
+
+                            const description = document.createElement('div');
+                            description.className = 'opcodes-description';
+                            description.textContent = opcode.description;
+
+                            card.appendChild(header);
+                            card.appendChild(syntax);
+                            card.appendChild(description);
+
+                            if (opcode.notes) {
+                                const notes = document.createElement('div');
+                                notes.className = 'opcodes-notes';
+                                notes.textContent = opcode.notes;
+                                card.appendChild(notes);
+                            }
+
+                            contentArea.appendChild(card);
+                        });
+                    });
+
+                    container.appendChild(contentArea);
+                    infoPanel.appendChild(container);
+                }
+            }
         </script>
         <script src="examples.js"></script>
         <script src="assembler.js"></script>
@@ -420,6 +550,451 @@
         <script src="ui.js"></script>
         <script src="user-preferences.js"></script>
     </div>
+
+    <!-- Flyout toggles -->
+    <div class="options-toggle" onclick="toggleFlyout('options')">OPTIONS</div>
+    <div class="info-toggle" onclick="toggleFlyout('info')">INFO</div>
+    <div class="instructions-toggle" onclick="toggleFlyout('instructions')">HELP</div>
+
+    <!-- Options flyout panel -->
+    <div id="optionsPanel" class="options-panel">
+        <div class="flyout-header">
+            <h3>Options</h3>
+        </div>
+        <div class="flyout-content">
+            <div class="flyout-section">
+                <h4>Editor Options</h4>
+                <div class="options">
+                    <div class="project-folder-section">
+                        <button id="projectFolderBtn" class="project-folder-button" onclick="selectProjectDirectory()">
+                            Select Project Folder
+                        </button>
+                        <span id="projectFolderLabel" class="project-folder-label">No directory selected</span>
+                    </div>
+
+                    <label>
+                        <input type="checkbox" id="editorHeightToggle" onchange="toggleEditorHeightWithSave()">
+                        Large editor window
+                    </label>
+
+                    <label>
+                        <input type="checkbox" id="minimapToggle" onchange="toggleMinimapWithSave()">
+                        Show editor mini-map
+                    </label>
+
+                    <label>
+                        <input type="checkbox" id="debugToggle" onchange="toggleDebugPresetWithSave()">
+                        Show full build results
+                    </label>
+
+                    <label>
+                        Theme:
+                        <select id="darkModeSelect" onchange="handleThemeChange()">
+                            <option value="system">System</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flyout-section">
+                <h4>Hardware Options</h4>
+                <div class="options">
+                    <div>
+                        <button onclick="selectOutputDirectory()" id="selectDirBtn">Select Output Directory</button>
+                        <span id="outputDirDisplay" class="hw-option-label">No directory selected</span>
+                    </div>
+                    
+                    <div>
+                        <button onclick="serialConnect()">Select Serial Port</button>
+                        <span id="serialPortDisplay" class="hw-option-label">No port selected</span>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <div style="margin-bottom: 10px;">
+                            Filename / Toggle Position:
+                            <span id="filenameLabel" style="font-weight: bold; margin-left: 5px; color: #333;">(none selected)</span>
+                        </div>
+                        <div class="button-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 10px;">
+                            <button class="filename-btn" data-filename="2.hex" onclick="selectFilename(this)">▲ 2 ▲</button>
+                            <button class="filename-btn" data-filename="6.hex" onclick="selectFilename(this)">▲ 6 ▼</button>
+                            <button class="filename-btn" data-filename="3.hex" onclick="selectFilename(this)">● 3 ▲</button>
+                            <button class="filename-btn" data-filename="7.hex" onclick="selectFilename(this)">● 7 ▼</button>
+                            <button class="filename-btn" data-filename="1.hex" onclick="selectFilename(this)">▼ 1 ▲</button>
+                            <button class="filename-btn" data-filename="5.hex" onclick="selectFilename(this)">▼ 5 ▼</button>
+                            <button class="filename-btn" data-filename="0.hex" onclick="selectFilename(this)">0 (BYPASS)</button>
+                            <button class="filename-btn" data-filename="4.hex" onclick="selectFilename(this)">4 (Not Used)</button>
+                        </div>
+                        <div style="font-size: 0.85em; color: #666; font-style: italic;">
+                            ▲ = switch up, ● = switch mid, ▼ = switch down
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flyout-section">
+                <div>
+                    <label class="windows-only">
+                        <span class="shortcut">
+                            <span class="key"><strong>Keyboard Shortcuts:</strong></span>
+                            <span class="desc"></span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>Ctrl+F</strong></span>
+                            <span class="desc">Find</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>Ctrl+Shift+F</strong></span>
+                            <span class="desc">Replace</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>F3</strong></span>
+                            <span class="desc">Find Next</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>Alt+A</strong></span>
+                            <span class="desc">Assemble</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>Alt+D</strong></span>
+                            <span class="desc">Download to Hardware</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>Alt+C</strong></span>
+                            <span class="desc">Clear Hardware</span>
+                        </span>
+                    </label>
+
+                    <label class="mac-only">
+                        <span class="shortcut">
+                            <span class="key"><strong>Keyboard Shortcuts:</strong></span>
+                            <span class="desc"></span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>⌘+F</strong></span>
+                            <span class="desc">Find</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>⌘+⌥+F</strong></span>
+                            <span class="desc">Replace</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>F3</strong></span>
+                            <span class="desc">Find Next</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>⌃+A</strong></span>
+                            <span class="desc">Assemble</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>⌃+D</strong></span>
+                            <span class="desc">Download to Hardware</span>
+                        </span>
+                        <span class="shortcut">
+                            <span class="key"><strong>⌃+C</strong></span>
+                            <span class="desc">Clear Hardware</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info flyout panel -->
+    <div id="infoPanel" class="info-panel">
+        <div class="flyout-header">
+            <h3>FV-1 Instruction Set Reference</h3>
+        </div>
+        <div class="flyout-content">
+            <!-- FV-1 opcodes content will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Instructions flyout panel -->
+    <div id="instructionsPanel" class="info-panel">
+        <div class="flyout-header">
+            <h3>Instructions & Help</h3>
+        </div>
+        <div class="flyout-content">
+            <div class="instructions-text">
+                <h4>Getting Started</h4>
+                <p>This web application is designed to assemble SpinASM source code into machine instructions for the FV-1 DSP chip. Generated machine code may be saved locally for later use, or sent to a <b>Sandbox FV1</b> hardware target to hear the results.</p>
+                <ul>
+                    <li><i>Enter SpinASM source code into the editor area, or select a file or example. Press the <b>Assemble</b> button to verify and assemble the code into a HEX file</i></li>
+                    <li><i>Press the <b>Download HEX</b> to save the resulting HEX file to your local Downloads folder. Check the <b>Build Results</b> for success or error messages.</i></li>
+                    <li><i><b>Download Binary</b> and <b>Download C Headers</b> output the assembled data in alternate format for use with more advanced applications and are not used with <b>Sandbox FV1</b> hardware</i></li>
+                    <li><i>When satisfied with your source code, press the <b>Save Source...</b> button to download a local copy.</i></li>
+                </ul>
+                <h4>Connecting to Hardware</h4>
+                <p><i>Connect your <b>Sandbox FV1</b> pedal to your computer using a suitable USB cable. A new removable drive labeled <b>SANDBOX-FV1</b> should appear.</i></p>
+                <ul>
+                    <li>Open the <b>Hardware Options</b> section to <b>Select Output Directory</b> button to specify the path to your <b>Sandbox FV1</b> (typically /SANDBOX-FV1).</li>
+                    <li><i>Use the <b>Filename / Toggle Position</b> buttons to select the destination slot on your hardware device</i></li>
+                    <li><i>Press the <b>Download to Hardware</b> button to save your algorithm to the <b>Sandbox FV1</b> hardware unit</i></li>
+                </ul>
+                <h4>Troubleshooting</h4>
+                <p>Errors and warnings will appear in the Build Results window and are often helpful for troubleshooting. Scroll up to the top to see previous messages</p>
+                <ul>
+                    <li>Error information not helpful - use <b>Editor Options - Show full build results</b> to see more detailed info</li>
+                    <li>File transfer problems - <i>ensure proper directory permissions</i></li>
+                    <li>Assembly errors - <i>check syntax and register usage</i></li>
+                    <li>Connection issues - <i>verify USB cable and folder selection</i></li>
+                </ul>
+                <h4>What do these Options do?</h4>
+                <p>These are some settings that change various editor settings</p>
+                <ul>
+                    <h3>Editor Options</h3>
+                    <li>Select Project Folder: <i>Choose path to save HEX, binary, header, and source files</i></li>
+                    <li>Large editor window: <i>Expands editor text area to show more instructions</i></li>
+                    <li>Theme: <i>Use light, dark, or system color theme</i></li>
+                    <li>Show editor mini-map: <i>Show a small navigation map in editor</i></li>
+                    <li>Show full build results: <i>Show complete debug information in <b>Build Results</b> window</i></li>
+                </ul>
+                <ul>
+                    <h3>Hardware Options</h3>
+                    <li>Select Output Directory: <i>Specify the folder location of your <b>Sandbox FV</b> hardware (typically /SANDBOX-FV1)</i></li>
+                    <li>Filename / Toggle Position: <i>Select the destination slot on your hardware device</i></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Keep track of open panels
+        window.openPanels = new Set();
+
+        // Toggle a panel
+        window.toggleFlyout = function(type) {
+            const panel = document.getElementById(`${type}Panel`);
+            const toggle = document.querySelector(`.${type}-toggle`);
+
+            if (!panel) {
+                console.error(`Panel not found: ${type}Panel`);
+                return;
+            }
+            if (!toggle) {
+                console.error(`Toggle not found: ${type}-toggle`);
+                return;
+            }
+
+            const isOpen = panel.classList.contains('open');
+
+            // Close all other panels
+            ['options', 'info', 'instructions'].forEach(t => {
+                if (t !== type) {
+                    const p = document.getElementById(`${t}Panel`);
+                    const tog = document.querySelector(`.${t}-toggle`);
+                    if (p && tog) {
+                        p.classList.remove('open');
+                        tog.classList.remove('panel-open');
+                        openPanels.delete(t);
+                    }
+                }
+            });
+
+            // Toggle clicked panel
+            panel.classList.toggle('open', !isOpen);
+            toggle.classList.toggle('panel-open', !isOpen);
+
+            if (!isOpen) {
+                openPanels.add(type);
+            } else {
+                openPanels.delete(type);
+            }
+
+            updatePanelPositions();
+        };
+
+        // Optional: open a panel programmatically
+        window.openFlyout = function(type) {
+            const panel = document.getElementById(`${type}Panel`);
+            if (!panel.classList.contains('open')) {
+                toggleFlyout(type);
+            }
+        };
+
+        // Close a panel programmatically
+        window.closeFlyout = function(type) {
+            const panel = document.getElementById(`${type}Panel`);
+            const toggle = document.querySelector(`.${type}-toggle`);
+            if (panel && toggle && panel.classList.contains('open')) {
+                panel.classList.remove('open');
+                toggle.classList.remove('panel-open');
+                openPanels.delete(type);
+                updatePanelPositions();
+            }
+        };
+
+        // Update the positions of the toggles to slide with panels
+        window.updatePanelPositions = function() {
+            const optionsPanel = document.getElementById('optionsPanel');
+            const infoPanel = document.getElementById('infoPanel');
+            const instructionsPanel = document.getElementById('instructionsPanel');
+
+            const optionsToggle = document.querySelector('.options-toggle');
+            const infoToggle = document.querySelector('.info-toggle');
+            const instructionsToggle = document.querySelector('.instructions-toggle');
+
+            if (optionsPanel && optionsToggle)
+                optionsToggle.style.right = optionsPanel.classList.contains('open') ? '330px' : '0px';
+
+            if (infoPanel && infoToggle)
+                infoToggle.style.right = infoPanel.classList.contains('open') ? '330px' : '0px';
+
+            if (instructionsPanel && instructionsToggle)
+                instructionsToggle.style.right = instructionsPanel.classList.contains('open') ? '630px' : '0px';
+        };
+
+        // Global keyboard shortcuts that work even when Monaco has focus
+        document.addEventListener('keydown', function(event) {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            
+            // Always handle ESC for closing panels
+            if (event.key === 'Escape' && openPanels.size > 0) {
+                openPanels.forEach(type => closeFlyout(type));
+                return;
+            }
+            
+            // FV-1 specific shortcuts - these should work globally, even in Monaco
+            let handled = false;
+            
+            if (isMac) {
+                if (event.ctrlKey) {
+                    switch (event.key.toLowerCase()) {
+                        case 'd':
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof downloadHex === 'function') {
+                                downloadHex();
+                            }
+                            handled = true;
+                            break;
+                        case 'c':
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof clearHardware === 'function') {
+                                clearHardware();
+                            }
+                            handled = true;
+                            break;
+                        case 'a':
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof assemble === 'function') {
+                                assemble();
+                            }
+                            handled = true;
+                            break;
+                    }
+                }
+            } else {
+                if (event.altKey) {
+                    switch (event.key.toLowerCase()) {
+                        case 'd':
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof downloadHex === 'function') {
+                                downloadHex();
+                            }
+                            handled = true;
+                            break;
+                        case 'c':
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof clearHardware === 'function') {
+                                clearHardware();
+                            }
+                            handled = true;
+                            break;
+                        case 'a':
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof assemble === 'function') {
+                                assemble();
+                            }
+                            handled = true;
+                            break;
+                    }
+                }
+            }
+            
+            // Handle Monaco find/replace shortcuts when Monaco doesn't have focus
+            const monacoHasFocus = document.activeElement?.closest('.monaco-editor');
+            if (!monacoHasFocus && !handled) {
+                if (isMac && event.metaKey) {
+                    switch (event.code) {
+                        case 'KeyF':
+                            if (event.altKey) {
+                                event.preventDefault();
+                                if (window.editor && editor.getAction) {
+                                    editor.getAction('editor.action.startFindReplaceAction').run();
+                                }
+                                return;
+                            } else {
+                                event.preventDefault();
+                                if (window.editor && editor.getAction) {
+                                    editor.getAction('actions.find').run();
+                                }
+                                return;
+                            }
+                            break;
+                    }
+                } else if (!isMac && event.ctrlKey) {
+                    switch (event.code) {
+                        case 'KeyF':
+                            if (event.shiftKey) {
+                                event.preventDefault();
+                                if (window.editor && editor.getAction) {
+                                    editor.getAction('editor.action.startFindReplaceAction').run();
+                                }
+                                return;
+                            } else {
+                                event.preventDefault();
+                                if (window.editor && editor.getAction) {
+                                    editor.getAction('actions.find').run();
+                                }
+                                return;
+                            }
+                            break;
+                    }
+                }
+            }
+        }, true); // Use capture phase to intercept before Monaco
+        
+        // Also add Monaco-specific key binding overrides when editor is created
+        window.addMonacoKeyBindings = function() {
+            if (window.editor && editor.addCommand) {
+                const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+                
+                // Override Monaco's default shortcuts with our FV-1 shortcuts
+                if (isMac) {
+                    // Mac: Ctrl+A, Ctrl+C, Ctrl+D
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA, function() {
+                        if (typeof assemble === 'function') assemble();
+                    });
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, function() {
+                        if (typeof clearHardware === 'function') clearHardware();
+                    });
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD, function() {
+                        if (typeof downloadHex === 'function') downloadHex();
+                    });
+                } else {
+                    // Windows/Linux: Alt+A, Alt+C, Alt+D
+                    editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyA, function() {
+                        if (typeof assemble === 'function') assemble();
+                    });
+                    editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyC, function() {
+                        if (typeof clearHardware === 'function') clearHardware();
+                    });
+                    editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyD, function() {
+                        if (typeof downloadHex === 'function') downloadHex();
+                    });
+                }
+            }
+        };
+    </script>
+
 </body>
 
 </html>

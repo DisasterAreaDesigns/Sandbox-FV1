@@ -1,7 +1,7 @@
 /**
  * DebugConfig.js - Global debug configuration system
  * 
- * Centralized debug control for the entire FXCore assembler system
+ * Centralized debug control for the entire SpinASM assembler system
  */
 
 class DebugConfig {
@@ -292,13 +292,18 @@ function debugLog(message, level = 'info', prefix = '') {
             if (levelClassMap[level]) {
                 const div = document.createElement('div');
                 div.className = `message ${levelClassMap[level]}`;
-                div.textContent = `${fullMessage}`;
+                if (level === 'serial') {
+                    div.textContent = `${message}`;
+                }
+                else {
+                    div.textContent = `${fullMessage}`;
+                }
                 messagesArea.appendChild(div);
                 
                 // Auto-scroll to bottom
                 messagesArea.scrollTop = messagesArea.scrollHeight;
                 // Optional: Limit number of messages to prevent memory issues
-                const maxMessages = 100;
+                const maxMessages = 512;
                 if (messagesArea.children.length > maxMessages) {
                     // Remove oldest messages
                     while (messagesArea.children.length > maxMessages) {
@@ -323,7 +328,7 @@ function addMessageToArea(message, className) {
         messagesArea.scrollTop = messagesArea.scrollHeight;
         
         // Optional: Limit number of messages
-        const maxMessages = 100;
+        const maxMessages = 512;
         if (messagesArea.children.length > maxMessages) {
             messagesArea.removeChild(messagesArea.firstChild);
         }
