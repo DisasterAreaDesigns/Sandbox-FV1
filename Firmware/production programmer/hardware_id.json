@@ -1,0 +1,11 @@
+{
+  "device_type": "FV1 Sandbox",
+  "firmware_version": "2.4",
+  "device_id": "fv1-sandbox-001",
+  "timestamp": "2025-08-07T00:00:00Z",
+  "hardware_info": {
+    "manufacturer": "Disaster Area Designs",
+    "model": "SandboxFV",
+    "serial_number": "SB240002"
+  }
+}

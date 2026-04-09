@@ -1,0 +1,703 @@
+import os
+import time
+import board
+import busio
+import digitalio
+import supervisor
+import random
+import neopixel
+import displayio
+import i2cdisplaybus
+import terminalio
+import adafruit_displayio_ssd1306
+from adafruit_display_text import label
+
+# Release any previously configured displays
+displayio.release_displays()
+
+# Set up I2C bus on GP0 (SDA) and GP1 (SCL)
+i2c = busio.I2C(scl=board.GP1, sda=board.GP0)
+
+# Set up OLED display
+display_bus = i2cdisplaybus.I2CDisplayBus(i2c, device_address=0x3C)
+display = adafruit_displayio_ssd1306.SSD1306(display_bus, width=128, height=32)
+
+# OLED display group - 2 lines on 128x32
+oled_group = displayio.Group()
+oled_line1 = label.Label(terminalio.FONT, text="", color=0xFFFFFF, x=0, y=6)
+oled_line2 = label.Label(terminalio.FONT, text="", color=0xFFFFFF, x=0, y=22)
+oled_group.append(oled_line1)
+oled_group.append(oled_line2)
+display.root_group = oled_group
+
+# Screensaver display group - single label "FV-1 PROG"
+# terminalio.FONT is 6x12 pixels. "FV-1 PROG" = 9 chars = 54px wide, ~12px tall
+# Bounce area: x in [0, 74], y in [6, 26]
+screensaver_group = displayio.Group()
+screensaver_label = label.Label(terminalio.FONT, text="FV-1 PROG", color=0xFFFFFF, x=0, y=16)
+screensaver_group.append(screensaver_label)
+
+# Screensaver / inactivity tracking
+SCREENSAVER_TIMEOUT = 20  # 5 minutes in seconds
+SCREENSAVER_MOVE_INTERVAL = 2.0  # seconds between position changes
+last_activity_time = time.monotonic()
+screensaver_active = False
+last_screensaver_move = 0
+
+def exit_screensaver():
+    """Switch from screensaver back to normal display"""
+    global screensaver_active
+    if screensaver_active:
+        screensaver_active = False
+        display.root_group = oled_group
+
+def reset_activity():
+    """Reset the inactivity timer and exit screensaver if active"""
+    global last_activity_time
+    last_activity_time = time.monotonic()
+    exit_screensaver()
+
+def oled_status(line1, line2=""):
+    """Update the OLED with two lines of status"""
+    reset_activity()
+    oled_line1.text = str(line1)[:21]  # ~21 chars fit at 6px wide on 128px
+    oled_line2.text = str(line2)[:21]
+
+# Set up control pin (GP2) - keep HIGH by default, toggle LOW only during programming
+control_pin = digitalio.DigitalInOut(board.GP2)
+control_pin.direction = digitalio.Direction.OUTPUT
+control_pin.value = True  # Keep high by default
+
+# Set up button on GP3 - momentary, active low with pull-up
+button_pin = digitalio.DigitalInOut(board.GP3)
+button_pin.direction = digitalio.Direction.INPUT
+button_pin.pull = digitalio.Pull.UP
+button_last_state = True  # pull-up means idle = True
+
+# Set up WS2812 RGB LED on GP16
+pixel = neopixel.NeoPixel(board.GP16, 1, brightness=1.0, auto_write=True, pixel_order='GRB')
+
+# RGB Color definitions - solid colors only
+COLOR_OFF = (0, 0, 0)       # Off
+COLOR_RED = (255, 0, 0)     # Red for uploading
+COLOR_GREEN = (0, 255, 0)   # Green for success
+COLOR_BLUE = (0, 0, 255)    # Blue for idle state
+COLOR_DIM_BLUE = (0, 0, 8)  # Very dim blue for programming
+
+# EEPROM address
+EEPROM_ADDR = 0x50
+
+# File to EEPROM address mapping
+FILE_ADDRESS_MAP = {
+    "0.hex": 0x0000,
+    "1.hex": 0x0200,
+    "2.hex": 0x0400,
+    "3.hex": 0x0600,
+    "4.hex": 0x0800,
+    "5.hex": 0x0A00,
+    "6.hex": 0x0C00,
+    "7.hex": 0x0E00,
+    "all.hex": 0x0000  # Special case: write entire EEPROM starting from beginning
+}
+
+# Default start address for other filenames
+DEFAULT_START_ADDR = 0x0600
+
+# We'll use the normal REPL for output
+def print_serial(message):
+    """Print to the REPL"""
+    print(message)
+
+def set_led_color(color):
+    """Set the WS2812 LED color"""
+    pixel[0] = color
+    
+def blink_led_once(color, duration=0.2):
+    """Blink both LEDs once quickly with specified color"""
+    set_led_color(color)
+    time.sleep(duration)
+    set_led_color(COLOR_OFF)
+    time.sleep(duration)
+
+def blink_led_pattern(color, on_time=0.1, off_time=0.1, count=3):
+    """Blink both LEDs in a pattern with specified color"""
+    for _ in range(count):
+        set_led_color(color)
+        time.sleep(on_time)
+        set_led_color(COLOR_OFF)
+        time.sleep(off_time)
+
+def parse_hex_line(line):
+    """Parse a single line of Intel HEX format"""
+    if not line.startswith(':'):
+        return None, None, None, []
+    
+    # Remove the leading ':' and strip whitespace/newlines
+    data = line.strip()[1:]
+    
+    try:
+        # Get basic parameters
+        byte_count = int(data[0:2], 16)
+        address = (int(data[2:4], 16) << 8) + int(data[4:6], 16)
+        record_type = int(data[6:8], 16)
+        
+        # Extract the data bytes
+        byte_data = []
+        for i in range(byte_count):
+            pos = 8 + (i * 2)
+            if pos + 2 <= len(data):
+                byte_data.append(int(data[pos:pos+2], 16))
+        
+        return byte_count, address, record_type, byte_data
+    
+    except Exception as e:
+        print_serial("Error parsing line: " + str(e))
+        return None, None, None, []
+
+def write_eeprom_page(eeprom_address, page_address, data):
+    """Write a page of data to the EEPROM (max 32 bytes per page)"""
+    # Create the I2C write buffer
+    buffer = bytearray(2 + len(data))
+    buffer[0] = (page_address >> 8) & 0xFF  # High byte of address
+    buffer[1] = page_address & 0xFF         # Low byte of address
+    buffer[2:] = data                       # Data bytes
+    
+    # Write to the EEPROM
+    try:
+        i2c.try_lock()
+        i2c.writeto(eeprom_address, buffer)
+        i2c.unlock()
+        # Wait for write cycle to complete (6ms is sufficient for 24LC32A)
+        time.sleep(0.006)  # 6ms
+        
+        return True
+    except Exception as e:
+        print_serial("EEPROM write error: " + str(e))
+        try:
+            i2c.unlock()  # Make sure to unlock even if there's an error
+        except:
+            pass
+        return False
+
+def read_eeprom(eeprom_address, start_address, num_bytes):
+    """Read bytes from the EEPROM"""
+    # Set the address pointer
+    addr_buffer = bytearray(2)
+    addr_buffer[0] = (start_address >> 8) & 0xFF  # High byte of address
+    addr_buffer[1] = start_address & 0xFF         # Low byte of address
+    
+    try:
+        i2c.try_lock()
+        i2c.writeto(eeprom_address, addr_buffer)
+        
+        # Read the data
+        result = bytearray(num_bytes)
+        i2c.readfrom_into(eeprom_address, result)
+        i2c.unlock()
+        return result
+    except Exception as e:
+        print_serial("EEPROM read error: " + str(e))
+        try:
+            i2c.unlock()  # Make sure to unlock even if there's an error
+        except:
+            pass
+        return None
+
+def clear_entire_eeprom():
+    """Clear the entire EEPROM by writing 0xFF to all locations"""
+    print_serial("Clearing entire EEPROM (writing 0xFF to all locations)...")
+    oled_status("Clearing EEPROM", "0xFF all pages...")
+    
+    # For 24LC32A: 4096 bytes (0x0000 to 0x0FFF)
+    eeprom_size = 4096
+    page_size = 32
+    
+    # Create a page of 0xFF bytes
+    clear_data = bytearray([0xFF] * page_size)
+    
+    for addr in range(0, eeprom_size, page_size):
+        print_serial("Clearing page at address 0x{:04X}".format(addr))
+        result = write_eeprom_page(EEPROM_ADDR, addr, clear_data)
+        
+        if not result:
+            print_serial("Error clearing page at address 0x{:04X}".format(addr))
+            return False
+    
+    print_serial("EEPROM cleared successfully")
+    return True
+
+def process_and_program_hex_file(filename):
+    """Process a HEX file and program the EEPROM"""
+    all_bytes = []
+    line_count = 0
+    min_addr = None
+    max_addr = None
+    
+    # Turn off LEDs while processing files
+    set_led_color(COLOR_OFF)
+    
+    try:
+        # Open and parse the HEX file - first pass to validate
+        with open(filename, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                line_count += 1
+                
+                byte_count, address, record_type, data = parse_hex_line(line)
+                
+                # Skip invalid lines
+                if byte_count is None:
+                    continue
+                
+                # Data record - track address range
+                if record_type == 0:
+                    if min_addr is None:
+                        min_addr = address
+                        max_addr = address + len(data) - 1
+                    else:
+                        min_addr = min(min_addr, address)
+                        max_addr = max(max_addr, address + len(data) - 1)
+                
+                # End of file record
+                elif record_type == 1:
+                    break
+        
+        # Second pass - actually extract the data first to check for zero-byte files
+        with open(filename, "r") as f:
+            for line in f:
+                byte_count, address, record_type, data = parse_hex_line(line)
+                
+                # Skip invalid lines
+                if byte_count is None:
+                    continue
+                
+                # Data record
+                if record_type == 0:
+                    all_bytes.extend(data)
+                
+                # End of file record
+                elif record_type == 1:
+                    break
+        
+        # Check if the hex file contained any data - do this BEFORE validation
+        if len(all_bytes) == 0:
+            print_serial("Ignoring zero-byte hex file: {}".format(filename))
+            set_led_color(COLOR_OFF)
+            return True  # Return True so file gets marked as processed
+        
+        # Determine expected parameters based on filename
+        base_filename = filename.split('/')[-1]
+        
+        if base_filename == "all.hex":
+            expected_lines = 1025
+            expected_min_addr = 0x000
+            expected_max_addr = 0xFFF
+        else:
+            expected_lines = 129
+            expected_min_addr = 0x000
+            expected_max_addr = 0x1FF
+        
+        # Validate line count
+        if line_count != expected_lines:
+            print_serial("ERROR: {} must have exactly {} lines, but has {} lines".format(base_filename, expected_lines, line_count))
+            oled_status("BAD LINE COUNT", "{} has {}".format(base_filename, line_count))
+            set_led_color(COLOR_RED)
+            return False
+        
+        # Validate address range
+        if min_addr != expected_min_addr or max_addr != expected_max_addr:
+            print_serial("ERROR: {} must have address range 0x{:03X}-0x{:03X}, but has 0x{:03X}-0x{:03X}".format(
+                base_filename, expected_min_addr, expected_max_addr, min_addr or 0, max_addr or 0))
+            oled_status("BAD ADDR RANGE", "{:03X}-{:03X}".format(min_addr or 0, max_addr or 0))
+            set_led_color(COLOR_RED)
+            return False
+        
+        print_serial("Validation passed: {} lines, address range 0x{:03X}-0x{:03X}".format(line_count, min_addr, max_addr))
+        oled_status("Validated OK", base_filename)
+        
+        # Determine start address based on filename
+        if base_filename in FILE_ADDRESS_MAP:
+            start_address = FILE_ADDRESS_MAP[base_filename]
+        else:
+            start_address = DEFAULT_START_ADDR
+        
+        print_serial("Using start address: 0x{:04X} for file: {}".format(start_address, base_filename))
+        print_serial("File contains {} bytes of data".format(len(all_bytes)))
+        
+        # Special handling for all.hex - clear EEPROM first
+        if base_filename == "all.hex":
+            print_serial("Processing all.hex - will clear entire EEPROM first")
+            if not clear_entire_eeprom():
+                print_serial("Failed to clear EEPROM for all.hex")
+                set_led_color(COLOR_RED)
+                return False
+        
+        # Program the EEPROM in pages (32 bytes per page for 24LC32A)
+        total_bytes = len(all_bytes)
+        page_size = 32
+        
+        print_serial("Programming EEPROM with " + str(total_bytes) + " bytes")
+        oled_status("Writing " + base_filename, "0/{} bytes".format(total_bytes))
+        
+        # Start with dim blue LEDs during programming
+        set_led_color(COLOR_DIM_BLUE)
+        
+        for i in range(0, total_bytes, page_size):
+            # Get the data for this page
+            page_end = min(i + page_size, total_bytes)
+            page_data = all_bytes[i:page_end]
+            
+            # Calculate the actual EEPROM address for this page
+            eeprom_addr = start_address + i
+            
+            # Write the page
+            print_serial("Writing page at address 0x{:04X}".format(eeprom_addr))
+            if i % (page_size * 8) == 0:
+                pct = ((i + page_size) * 100) // total_bytes
+                if pct > 100:
+                    pct = 100
+                oled_status("Writing " + base_filename, "0x{:04X} {}%".format(eeprom_addr, pct))
+            result = write_eeprom_page(EEPROM_ADDR, eeprom_addr, bytearray(page_data))
+            
+            if not result:
+                print_serial("Error writing page at address 0x{:04X}".format(eeprom_addr))
+                oled_status("WRITE ERROR", "0x{:04X}".format(eeprom_addr))
+                set_led_color(COLOR_OFF)
+                return False
+        
+        # Programming complete - exit programming mode
+        control_pin.value = True
+        time.sleep(0.1)
+        print_serial("Programming mode deactivated (GP3 set high)")
+        
+        # Print summary to match the header format
+        filename_base = filename.split('/')[-1].split('.')[0]
+        print_serial(filename_base + "[] = {")
+        
+        # Print 4 bytes per line
+        for i in range(0, len(all_bytes), 4):
+            line = ""
+            for j in range(min(4, len(all_bytes) - i)):
+                byte = all_bytes[i + j]
+                line += "0x{:02X}, ".format(byte)
+            print_serial(line)
+        
+        print_serial("};")
+        print_serial("Total bytes programmed: " + str(total_bytes))
+        print_serial("Start address: 0x{:04X}".format(start_address))
+        print_serial("End address: 0x{:04X}".format(start_address + total_bytes - 1))
+        
+        # Special message for all.hex
+        if base_filename == "all.hex":
+            print_serial("ENTIRE EEPROM PROGRAMMED with all.hex")
+        
+        # Indicate file programming success with GREEN LEDs
+        set_led_color(COLOR_GREEN)
+        oled_status("Done: " + base_filename, str(total_bytes) + "B written OK")
+        
+        return True
+    
+    except Exception as e:
+        print_serial("Error processing file: " + str(e))
+        oled_status("FILE ERROR", str(e)[:21])
+        set_led_color(COLOR_OFF)
+        return False
+
+# Track processed files to avoid reprocessing
+processed_files = set()
+programming_complete = False
+
+# Main program
+oled_status("EEPROM Programmer", "Starting...")
+print_serial("HEX File to EEPROM Programmer")
+print_serial("Running on: " + board.board_id)
+print_serial("I2C EEPROM address: 0x{:02X}".format(EEPROM_ADDR))
+print_serial("WS2812 RGB LED on GP16 + Status LED on GP3:")
+print_serial("  OFF = idle/waiting")
+print_serial("  DIM BLUE = writing file")
+print_serial("  GREEN = file write successful")
+print_serial("  RED blinking = error/failure")
+print_serial("Place .HEX files in the root directory to program the EEPROM")
+print_serial("File to address mapping:")
+# Sort files: numbered files first (0-7), then all.hex
+sorted_files = sorted(FILE_ADDRESS_MAP.items(), key=lambda x: (x[0] != "all.hex", x[0]))
+for file, addr in sorted_files:
+    if file == "all.hex":
+        print_serial("  {} -> 0x{:04X} (ENTIRE EEPROM - requires 1025 lines, 0x000-0xFFF)".format(file, addr))
+    else:
+        print_serial("  {} -> 0x{:04X} (requires 129 lines, 0x000-0x1FF)".format(file, addr))
+print_serial("Default address for other files: 0x{:04X} (requires 129 lines, 0x000-0x1FF)".format(DEFAULT_START_ADDR))
+
+# Try to initialize I2C and detect EEPROM
+try:
+    if not i2c.try_lock():
+        print_serial("Could not lock I2C bus")
+        oled_status("I2C Error", "Bus locked")
+        # Blink both LEDs RED to indicate I2C error
+        blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
+    else:
+        devices = i2c.scan()
+        i2c.unlock()
+        
+        if EEPROM_ADDR in devices:
+            print_serial("EEPROM detected at address 0x{:02X}".format(EEPROM_ADDR))
+            oled_status("EEPROM found", "0x{:02X} Ready".format(EEPROM_ADDR))
+        else:
+            print_serial("WARNING: EEPROM not detected at address 0x{:02X}".format(EEPROM_ADDR))
+            print_serial("Available I2C devices: " + ", ".join(["0x{:02X}".format(addr) for addr in devices]))
+            oled_status("EEPROM not found!", "Check wiring")
+            # Blink both LEDs RED to indicate EEPROM not found
+            blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
+except Exception as e:
+    print_serial("I2C initialization error: " + str(e))
+    oled_status("I2C Init Error", str(e)[:21])
+    try:
+        i2c.unlock()  # Try to unlock in case it's already locked
+    except:
+        pass
+    # Blink both LEDs RED to indicate error
+    blink_led_pattern(COLOR_RED, 0.05, 0.05, 10)
+
+# Make sure control pin is HIGH at startup
+control_pin.value = True
+print_serial("Control pin set HIGH at startup")
+
+# Set both LEDs to OFF for startup
+set_led_color(COLOR_OFF)
+
+# EEPROM presence tracking
+eeprom_present = False
+last_scan_time = 0
+SCAN_INTERVAL = 1.0  # seconds between scans
+
+def scan_for_eeprom():
+    """Check if EEPROM is present on I2C bus"""
+    try:
+        if not i2c.try_lock():
+            return None  # bus busy, skip
+        devices = i2c.scan()
+        i2c.unlock()
+        return EEPROM_ADDR in devices
+    except:
+        try:
+            i2c.unlock()
+        except:
+            pass
+        return None
+
+oled_status("No target", "Connect EEPROM")
+
+while True:
+    try:
+        # Periodically scan for EEPROM presence
+        now = time.monotonic()
+        
+        # Check button (active low with pull-up)
+        button_state = button_pin.value
+        if not button_state and button_last_state:
+            # Button just pressed
+            reset_activity()
+            print_serial("Button pressed - screensaver reset")
+        button_last_state = button_state
+        
+        # Screensaver logic
+        if not screensaver_active and (now - last_activity_time >= SCREENSAVER_TIMEOUT):
+            # Activate screensaver
+            screensaver_active = True
+            screensaver_label.x = random.randint(0, 74)
+            screensaver_label.y = random.randint(6, 26)
+            display.root_group = screensaver_group
+            last_screensaver_move = now
+            print_serial("Screensaver activated")
+        elif screensaver_active and (now - last_screensaver_move >= SCREENSAVER_MOVE_INTERVAL):
+            # Move text to new random position
+            screensaver_label.x = random.randint(0, 74)
+            screensaver_label.y = random.randint(6, 26)
+            last_screensaver_move = now
+        
+        if now - last_scan_time >= SCAN_INTERVAL:
+            last_scan_time = now
+            found = scan_for_eeprom()
+            if found is not None:
+                if found and not eeprom_present:
+                    # EEPROM just connected
+                    eeprom_present = True
+                    processed_files.clear()  # reset so files can be re-programmed
+                    print_serial("EEPROM connected")
+                    oled_status("EEPROM found", "Waiting for .hex")
+                elif not found and eeprom_present:
+                    # EEPROM just removed
+                    eeprom_present = False
+                    print_serial("EEPROM removed")
+                    oled_status("No target", "Connect EEPROM")
+                    set_led_color(COLOR_OFF)
+        
+        # Only process files if EEPROM is present
+        if not eeprom_present:
+            time.sleep(0.1)
+            continue
+
+        # Check for HEX files
+        files = os.listdir("/")
+        # Only process files that end with .hex, don't start with a dot, and haven't been processed
+        hex_files = [f for f in files if 
+                    (f.lower().endswith(".hex") and 
+                     not f.startswith(".") and 
+                     f not in processed_files)]
+        
+        if hex_files:
+            # Reset programming complete flag
+            programming_complete = False
+            actually_programmed = False  # Track if we actually programmed anything
+            
+            # Special handling: if all.hex is present, process it first and alone
+            if "all.hex" in hex_files:
+                print_serial("")
+                print_serial("Found all.hex - processing as complete EEPROM image")
+                oled_status("Found all.hex", "Full EEPROM image")
+                
+                # Switch to dim blue LEDs during processing
+                set_led_color(COLOR_DIM_BLUE)
+                
+                # Process only the all.hex file
+                success = process_and_program_hex_file("/all.hex")
+                
+                if success:
+                    # Add to our processed files set
+                    processed_files.add("all.hex")
+                    print_serial("File marked as processed")
+                    
+                    # Optional: Create a small marker file to indicate processing
+                    try:
+                        with open("/all.hex.programmed", "w") as f:
+                            f.write("Programmed entire EEPROM on " + str(time.monotonic()))
+                    except:
+                        pass
+                    
+                    # Check if we actually programmed data (not a zero-byte file)
+                    # Re-open the file to check if it contained actual data
+                    try:
+                        all_bytes_check = []
+                        with open("/all.hex", "r") as f:
+                            for line in f:
+                                byte_count, address, record_type, data = parse_hex_line(line)
+                                if record_type == 0:  # Data record
+                                    all_bytes_check.extend(data)
+                        
+                        if len(all_bytes_check) > 0:
+                            print_serial("Successfully programmed entire EEPROM with all.hex")
+                            actually_programmed = True
+                            # LEDs stay green after successful write
+                            set_led_color(COLOR_GREEN)
+                        else:
+                            print_serial("all.hex was zero-byte file - no programming needed")
+                            oled_status("all.hex empty", "Nothing to write")
+                            set_led_color(COLOR_OFF)
+                    except:
+                        # If we can't re-check, assume it was programmed since success was True
+                        actually_programmed = True
+                        set_led_color(COLOR_GREEN)
+                else:
+                    # Turn off LEDs on error
+                    oled_status("all.hex FAILED", "Check serial log")
+                    set_led_color(COLOR_RED)
+                
+                # After all.hex processing, toggle control pin ONLY if we actually programmed
+                if success and actually_programmed:
+                    print_serial("")
+                    print_serial("EEPROM fully programmed - entering programming mode...")
+                    oled_status("GP2 toggle", "Programming target")
+                    control_pin.value = False
+                    time.sleep(0.01)  # 10ms delay
+                    control_pin.value = True
+                    print_serial("Programming mode complete (GP3 toggled)")
+                    programming_complete = True
+                    
+                    # Return to dim blue LEDs after programming complete
+                    set_led_color(COLOR_DIM_BLUE)
+                    oled_status("Complete", "Waiting for .hex")
+            
+            else:
+                # Process individual hex files normally
+                for hex_file in hex_files:
+                    print_serial("")
+                    print_serial("Found HEX file: " + hex_file)
+                    oled_status("Found: " + hex_file, "Processing...")
+                    
+                    # Switch off LEDs during processing
+                    set_led_color(COLOR_OFF)
+                    
+                    # Process the file and program the EEPROM
+                    success = process_and_program_hex_file("/" + hex_file)
+                    
+                    if success:
+                        # Add to our processed files set
+                        processed_files.add(hex_file)
+                        print_serial("File marked as processed")
+                        
+                        # Check if we actually programmed data (not a zero-byte file)
+                        try:
+                            all_bytes_check = []
+                            with open("/" + hex_file, "r") as f:
+                                for line in f:
+                                    byte_count, address, record_type, data = parse_hex_line(line)
+                                    if record_type == 0:  # Data record
+                                        all_bytes_check.extend(data)
+                            
+                            if len(all_bytes_check) > 0:
+                                print_serial("Successfully programmed EEPROM with " + hex_file)
+                                actually_programmed = True
+                                # Optional: Create a small marker file to indicate processing
+                                try:
+                                    with open("/" + hex_file + ".programmed", "w") as f:
+                                        f.write("Programmed on " + str(time.monotonic()))
+                                except:
+                                    pass
+                                # LEDs stay green after successful write
+                                set_led_color(COLOR_GREEN)
+                            else:
+                                print_serial(hex_file + " was zero-byte file - no programming needed")
+                        except:
+                            # If we can't re-check, assume it was programmed since success was True
+                            actually_programmed = True
+                            set_led_color(COLOR_GREEN)
+                    else:
+                        # Turn off LEDs on error
+                        oled_status(hex_file + " FAIL", "Check serial log")
+                        set_led_color(COLOR_RED)
+                        break
+                    
+                    # Turn off LEDs between writes
+                    if hex_file != hex_files[-1]:
+                        set_led_color(COLOR_OFF)
+                        time.sleep(0.05)  # Brief delay between files
+                
+                # After all files are written, toggle control pin once ONLY if we actually programmed
+                if not programming_complete and actually_programmed:
+                    print_serial("")
+                    print_serial("All files written - entering programming mode...")
+                    oled_status("GP2 toggle", "Programming target")
+                    control_pin.value = False
+                    time.sleep(0.01)  # 10ms delay
+                    control_pin.value = True
+                    print_serial("Programming mode complete (GP3 toggled)")
+                    programming_complete = True
+                    
+                    # Return to dim blue LEDs after programming complete
+                    set_led_color(COLOR_DIM_BLUE)
+                    oled_status("Complete", "Waiting for .hex")
+        
+        # Delay before checking again
+        time.sleep(0.1)
+    
+    except Exception as e:
+        print_serial("Error in main loop: " + str(e))
+        oled_status("LOOP ERROR", str(e)[:21])
+        # Indicate error with both LEDs blinking RED
+        blink_led_pattern(COLOR_RED, 0.05, 0.05, 5)
+        # Return to OFF idle state
+        set_led_color(COLOR_OFF)
+        oled_status("Error - retry", "in 5 seconds")
+        time.sleep(5)  # Longer delay if there's an error
