@@ -293,6 +293,11 @@ def process_and_program_hex_file(filename):
         page_size = 32
         
         print_serial("Programming EEPROM with " + str(total_bytes) + " bytes")
+
+        # Enter programming mode before writing
+        control_pin.value = False
+        time.sleep(0.01)  # 10ms delay
+        print_serial("Programming mode activated (GP2 set low)")
         
         # Start with dim blue LEDs during programming
         set_led_color(COLOR_DIM_BLUE)
@@ -481,19 +486,19 @@ while True:
                     set_led_color(COLOR_RED)
                     set_status_led(True)
                 
-                # After all.hex processing, toggle control pin ONLY if we actually programmed
-                if success and actually_programmed:
-                    print_serial("")
-                    print_serial("EEPROM fully programmed - entering programming mode...")
-                    control_pin.value = False
-                    time.sleep(0.01)  # 10ms delay
-                    control_pin.value = True
-                    print_serial("Programming mode complete (GP3 toggled)")
-                    programming_complete = True
+                # # After all.hex processing, toggle control pin ONLY if we actually programmed
+                # if success and actually_programmed:
+                #     print_serial("")
+                #     print_serial("EEPROM fully programmed - entering programming mode...")
+                #     control_pin.value = False
+                #     time.sleep(0.01)  # 10ms delay
+                #     control_pin.value = True
+                #     print_serial("Programming mode complete (GP3 toggled)")
+                #     programming_complete = True
                     
-                    # Return to dim blue LEDs after programming complete
-                    set_led_color(COLOR_DIM_BLUE)
-                    set_status_led(False)
+                #     # Return to dim blue LEDs after programming complete
+                #     set_led_color(COLOR_DIM_BLUE)
+                #     set_status_led(False)
             
             else:
                 # Process individual hex files normally
@@ -553,19 +558,19 @@ while True:
                         set_status_led(False)
                         time.sleep(0.05)  # Brief delay between files
                 
-                # After all files are written, toggle control pin once ONLY if we actually programmed
-                if not programming_complete and actually_programmed:
-                    print_serial("")
-                    print_serial("All files written - entering programming mode...")
-                    control_pin.value = False
-                    time.sleep(0.01)  # 10ms delay
-                    control_pin.value = True
-                    print_serial("Programming mode complete (GP3 toggled)")
-                    programming_complete = True
+                # # After all files are written, toggle control pin once ONLY if we actually programmed
+                # if not programming_complete and actually_programmed:
+                #     print_serial("")
+                #     print_serial("All files written - entering programming mode...")
+                #     control_pin.value = False
+                #     time.sleep(0.01)  # 10ms delay
+                #     control_pin.value = True
+                #     print_serial("Programming mode complete (GP3 toggled)")
+                #     programming_complete = True
                     
-                    # Return to dim blue LEDs after programming complete
-                    set_led_color(COLOR_DIM_BLUE)
-                    set_status_led(False)
+                #     # Return to dim blue LEDs after programming complete
+                #     set_led_color(COLOR_DIM_BLUE)
+                #     set_status_led(False)
         
         # Delay before checking again
         time.sleep(0.1)
