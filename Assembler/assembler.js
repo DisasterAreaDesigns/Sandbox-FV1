@@ -45,6 +45,7 @@ class FV1Assembler {
         this.jmptbl = {};
         this.linebuf = [];
         this.sline = 0;
+        this.instLine = 0;   // line the current instruction started on
         this.sym = null;
         this.lastLfoName = null;
 
@@ -589,7 +590,7 @@ class FV1Assembler {
     parseRegister(mnemonic = '') {
         const reg = Math.floor(this.parseExpression());
         if (reg < 0 || reg > 63) {
-            this.error(`Register ${reg} out of range for ${mnemonic}`, this.sline);
+            this.error(`Register ${reg} out of range for ${mnemonic}`, this.instLine);
             return 0;
         }
         return reg;
@@ -604,10 +605,10 @@ class FV1Assembler {
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S1_14, Math.min(this.MAX_S1_14, arg));
-                    this.warn(`S1.14 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S1.14 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                     arg = Math.floor(arg * this.REF_S1_14);
                 } else {
-                    this.error(`S1.14 arg ${arg} out of range (-2 to ${this.MAX_S1_14}) for ${mnemonic}`, this.sline);
+                    this.error(`S1.14 arg ${arg} out of range (-2 to ${this.MAX_S1_14}) for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -615,9 +616,9 @@ class FV1Assembler {
             if (arg < this.MIN_S1_14 || arg > this.MAX_S1_14) {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S1_14, Math.min(this.MAX_S1_14, arg));
-                    this.warn(`S1.14 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S1.14 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S1.14 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S1.14 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -634,10 +635,10 @@ class FV1Assembler {
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S1_9, Math.min(this.MAX_S1_9, arg));
-                    this.warn(`S1.9 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S1.9 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                     arg = Math.floor(arg * this.REF_S1_9);
                 } else {
-                    this.error(`S1.9 arg ${arg} out of range (-2 to ${this.MAX_S1_9}) for ${mnemonic}`, this.sline);
+                    this.error(`S1.9 arg ${arg} out of range (-2 to ${this.MAX_S1_9}) for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -645,9 +646,9 @@ class FV1Assembler {
             if (arg < this.MIN_S1_9 || arg > this.MAX_S1_9) {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S1_9, Math.min(this.MAX_S1_9, arg));
-                    this.warn(`S1.9 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S1.9 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S1.9 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S1.9 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -664,10 +665,10 @@ class FV1Assembler {
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S_10, Math.min(this.MAX_S_10, arg));
-                    this.warn(`S.10 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S.10 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                     arg = Math.floor(arg * this.REF_S_10);
                 } else {
-                    this.error(`S.10 arg ${arg} out of range (-1 to ${this.MAX_S_10}) for ${mnemonic}`, this.sline);
+                    this.error(`S.10 arg ${arg} out of range (-1 to ${this.MAX_S_10}) for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -675,9 +676,9 @@ class FV1Assembler {
             if (arg < this.MIN_S_10 || arg > this.MAX_S_10) {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S_10, Math.min(this.MAX_S_10, arg));
-                    this.warn(`S.10 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S.10 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S.10 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S.10 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -700,10 +701,10 @@ class FV1Assembler {
                 // Out of range integer
                 if (this.clamp) {
                     arg = Math.max(-32768, Math.min(32767, arg));
-                    this.warn(`S.15 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S.15 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                     return arg & 0xFFFF;
                 } else {
-                    this.error(`S.15 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S.15 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     return 0;
                 }
             }
@@ -712,9 +713,9 @@ class FV1Assembler {
             if (arg < this.MIN_S_15 || arg > this.MAX_S_15) {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S_15, Math.min(this.MAX_S_15, arg));
-                    this.warn(`S.15 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S.15 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S.15 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S.15 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -730,9 +731,9 @@ class FV1Assembler {
             if (arg < 0 || arg > 0xFFFFFF) {
                 if (this.clamp) {
                     arg = Math.max(0, Math.min(0xFFFFFF, arg));
-                    this.warn(`S.23 arg clamped to 0x${arg.toString(16)} for ${mnemonic}`, this.sline);
+                    this.warn(`S.23 arg clamped to 0x${arg.toString(16)} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S.23 arg 0x${arg.toString(16)} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S.23 arg 0x${arg.toString(16)} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -742,9 +743,9 @@ class FV1Assembler {
             if (arg < this.MIN_S_23 || arg > this.MAX_S_23) {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S_23, Math.min(this.MAX_S_23, arg));
-                    this.warn(`S.23 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S.23 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S.23 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S.23 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -761,10 +762,10 @@ class FV1Assembler {
             } else {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S4_6, Math.min(this.MAX_S4_6, arg));
-                    this.warn(`S4.6 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S4.6 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                     arg = Math.floor(arg * this.REF_S4_6);
                 } else {
-                    this.error(`S4.6 arg ${arg} out of range (-16 to ${this.MAX_S4_6}) for ${mnemonic}`, this.sline);
+                    this.error(`S4.6 arg ${arg} out of range (-16 to ${this.MAX_S4_6}) for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -772,9 +773,9 @@ class FV1Assembler {
             if (arg < this.MIN_S4_6 || arg > this.MAX_S4_6) {
                 if (this.clamp) {
                     arg = Math.max(this.MIN_S4_6, Math.min(this.MAX_S4_6, arg));
-                    this.warn(`S4.6 arg clamped to ${arg} for ${mnemonic}`, this.sline);
+                    this.warn(`S4.6 arg clamped to ${arg} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`S4.6 arg ${arg} out of range for ${mnemonic}`, this.sline);
+                    this.error(`S4.6 arg ${arg} out of range for ${mnemonic}`, this.instLine);
                     arg = 0;
                 }
             }
@@ -796,9 +797,9 @@ class FV1Assembler {
             if (addr < -0x8000 || addr > 0x7FFF) {
                 if (this.clamp) {
                     addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
-                    this.warn(`Address clamped to 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.sline);
+                    this.warn(`Address clamped to 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.sline);
+                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
                     addr = 0;
                 }
             }
@@ -809,7 +810,7 @@ class FV1Assembler {
     parseOffset(mnemonic = '') {
         const offset = Math.floor(this.parseExpression());
         if (offset < 0 || offset > 0x3F) {
-            this.error(`Offset ${offset} out of range for ${mnemonic}`, this.sline);
+            this.error(`Offset ${offset} out of range for ${mnemonic}`, this.instLine);
             return 0;
         }
         return offset;
@@ -818,7 +819,7 @@ class FV1Assembler {
     parseCondition(mnemonic = '') {
         const cond = Math.floor(this.parseExpression());
         if (cond < 0 || cond > 0x1F) {
-            this.error(`Condition 0x${cond.toString(16)} out of range for ${mnemonic}`, this.sline);
+            this.error(`Condition 0x${cond.toString(16)} out of range for ${mnemonic}`, this.instLine);
             return 0;
         }
         return cond;
@@ -841,7 +842,7 @@ class FV1Assembler {
         if ((lfo >= 0 && lfo <= 3) || (mnemonic === 'CHO' && (lfo === 8 || lfo === 9))) {
             return lfo;
         } else {
-            this.error(`Invalid LFO ${lfo} for ${mnemonic}`, this.sline);
+            this.error(`Invalid LFO ${lfo} for ${mnemonic}`, this.instLine);
             return 0;
         }
     }
@@ -858,6 +859,11 @@ class FV1Assembler {
 
     parseInstruction() {
         const mnemonic = this.sym.upper;
+        // Record the line before any operand is consumed. Parsing the last
+        // operand on a line makes nextSymbol() read ahead into the following
+        // line, so this.sline is no longer reliable by the time an operand is
+        // range checked.
+        this.instLine = this.sline;
         this.accept('MNEMONIC');
 
         if (this.icnt >= this.PROGLEN) {
@@ -1244,6 +1250,7 @@ class FV1Assembler {
     }
 
     parseAssemblerDirective() {
+        this.instLine = this.sline;
         let name = null;
         let directive = null;
 
