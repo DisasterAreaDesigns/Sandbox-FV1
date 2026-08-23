@@ -18,6 +18,26 @@ require(['vs/editor/editor.main'], function() {
         id: 'spin'
     });
 
+    // Comment token and bracket handling for the language. Without this,
+    // Monaco's built in Cmd+/ (Ctrl+/ on Windows) toggle does nothing,
+    // because the editor has no idea what a comment looks like in SpinASM.
+    monaco.languages.setLanguageConfiguration('spin', {
+        comments: {
+            lineComment: ';'
+        },
+        brackets: [
+            ['(', ')']
+        ],
+        autoClosingPairs: [
+            { open: '(', close: ')' },
+            { open: '"', close: '"' }
+        ],
+        surroundingPairs: [
+            { open: '(', close: ')' },
+            { open: '"', close: '"' }
+        ]
+    });
+
     monaco.languages.setMonarchTokensProvider('spin', {
         ignoreCase: true,
         tokenizer: {
