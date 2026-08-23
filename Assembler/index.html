@@ -268,6 +268,12 @@
                                     "notes": "• Used specifically for the construction of filters\n• Coefficient width is 16 bits, ranging -2.0 to +1.9999389\n• Previous ACC value is simultaneously loaded into PACC\n• Use RDFX reg,1 to load a register directly to the accumulator"
                                 },
                                 {
+                                    "name": "LDAX",
+                                    "syntax": "LDAX register",
+                                    "description": "Load ACC directly from a register",
+                                    "notes": "\u2022 Assembles to RDFX register, 0\n\u2022 Replaces the ACC contents rather than adding to them\n\u2022 Previous ACC value is simultaneously loaded into PACC"
+                                },
+                                {
                                     "name": "WRAX",
                                     "syntax": "WRAX register, coefficient",
                                     "description": "Write ACC to register, multiply ACC by coefficient",
@@ -383,6 +389,18 @@
                                     "syntax": "NOP",
                                     "description": "No operation",
                                     "notes": "• Does nothing, used for timing or alignment"
+                                },
+                                {
+                                    "name": "JMP",
+                                    "syntax": "JMP label",
+                                    "description": "Jump forward unconditionally to a label",
+                                    "notes": "• Assembles to SKP 0, offset\n• Can only jump forward, never backward\n• Maximum distance is 63 instructions"
+                                },
+                                {
+                                    "name": "RAW",
+                                    "syntax": "RAW value",
+                                    "description": "Emit a literal 32-bit machine word",
+                                    "notes": "• Escape hatch for hand-assembled or undocumented instructions\n• The value is written to the program unchanged, with no checking\n• Rarely needed - prefer a real mnemonic where one exists"
                                 }
                             ]
                         },
@@ -414,6 +432,88 @@
                                     "notes": "• Operations: RDA (read delay with LFO addressing), RDAL (load LFO output), SOF (multiply by LFO crossfade)\n• LFO selection: sin0, sin1, rmp0, rmp1\n• Flags: SIN/COS, REG, COMPC, COMPA, RPTR2, NA\n• Very flexible instruction for LFO-based effects"
                                 }
                             ]
+                        },
+                        "registers": {
+                            "name": "Registers",
+                            "opcodes": [
+                                {
+                                    "name": "ADCL / ADCR",
+                                    "syntax": "0x14 / 0x15",
+                                    "description": "Left and right audio inputs from the ADC",
+                                    "notes": "• Read-only in practice - written by the converter each sample\n• Read with RDAX ADCL, 1.0 or LDAX ADCL\n• Full scale is -1.0 to +0.9999999"
+                                },
+                                {
+                                    "name": "DACL / DACR",
+                                    "syntax": "0x16 / 0x17",
+                                    "description": "Left and right audio outputs to the DAC",
+                                    "notes": "• Write with WRAX DACL, 0 as the last step of a channel\n• Anything left unwritten outputs silence\n• On Sandbox hardware, program 0 is used as a bypass path"
+                                },
+                                {
+                                    "name": "POT0 / POT1 / POT2",
+                                    "syntax": "0x10 / 0x11 / 0x12",
+                                    "description": "The three control potentiometer inputs",
+                                    "notes": "• Range is 0 to +0.9999999, never negative\n• Already low-pass filtered in hardware, but still worth smoothing with RDFX for zipper-free control\n• These are the three knobs on the Sandbox pedal, and the three sliders in the simulator"
+                                },
+                                {
+                                    "name": "REG0 - REG31",
+                                    "syntax": "0x20 - 0x3F",
+                                    "description": "Thirty-two general purpose registers",
+                                    "notes": "• Retain their contents between sample periods, so they carry filter and envelope state\n• Give them readable names with EQU, for example: equ feedback reg0\n• Cleared to zero at power-up, so guard one-time setup with SKP RUN"
+                                },
+                                {
+                                    "name": "ADDR_PTR",
+                                    "syntax": "0x18",
+                                    "description": "Delay memory address pointer used by RMPA",
+                                    "notes": "• Holds the delay address for an indirect read\n• The address occupies the upper bits: write address * 256\n• Lets a delay tap be moved at runtime, which is how tap tempo and pitch effects are built"
+                                },
+                                {
+                                    "name": "SIN0_RATE / SIN0_RANGE",
+                                    "syntax": "0x00 / 0x01",
+                                    "description": "Frequency and amplitude of sine LFO 0 (SIN1 uses 0x02 / 0x03)",
+                                    "notes": "• Normally loaded once by WLDS under SKP RUN\n• Writing the rate register at runtime is how an LFO is made pot-controllable\n• Range sets the delay sweep width in samples"
+                                },
+                                {
+                                    "name": "RMP0_RATE / RMP0_RANGE",
+                                    "syntax": "0x04 / 0x05",
+                                    "description": "Frequency and amplitude of ramp LFO 0 (RMP1 uses 0x06 / 0x07)",
+                                    "notes": "• Normally loaded once by WLDR under SKP RUN\n• Range is a 2-bit code: 0 = 4096, 1 = 2048, 2 = 1024, 3 = 512 samples\n• Rate may be negative, which runs the ramp backwards"
+                                }
+                            ]
+                        },
+                        "reserved": {
+                            "name": "Reserved Words",
+                            "opcodes": [
+                                {
+                                    "name": "SKP conditions",
+                                    "syntax": "RUN  ZRC  ZRO  GEZ  NEG",
+                                    "description": "Condition flags for the SKP instruction",
+                                    "notes": "• RUN (0x10) - skip on every pass except the first, used to guard setup code\n• ZRC (0x08) - skip if ACC and PACC have different signs (zero crossing)\n• ZRO (0x04) - skip if ACC is exactly zero\n• GEZ (0x02) - skip if ACC is greater than or equal to zero\n• NEG (0x01) - skip if ACC is negative\n• Combine with | to test more than one condition"
+                                },
+                                {
+                                    "name": "CHO operations",
+                                    "syntax": "RDA  SOF  RDAL",
+                                    "description": "First operand of the CHO instruction",
+                                    "notes": "• RDA (0x00) - read delay memory using the LFO as address and interpolation\n• SOF (0x02) - scale ACC by the LFO, used for crossfading\n• RDAL (0x03) - load the raw LFO value into ACC\n• RDA and SOF are also opcode names; here they select the CHO mode"
+                                },
+                                {
+                                    "name": "LFO selectors",
+                                    "syntax": "SIN0  SIN1  RMP0  RMP1",
+                                    "description": "Which of the four LFOs an instruction refers to",
+                                    "notes": "• SIN0 (0x00) and SIN1 (0x01) are the sine generators\n• RMP0 (0x02) and RMP1 (0x03) are the ramp generators\n• COS0 and COS1 are aliases of SIN0 and SIN1 - use the COS flag to take the cosine output"
+                                },
+                                {
+                                    "name": "CHO flags",
+                                    "syntax": "SIN  COS  REG  COMPC  COMPA  RPTR2  NA",
+                                    "description": "Modifier flags for the CHO instruction",
+                                    "notes": "• SIN (0x00) / COS (0x01) - select sine or cosine output\n• REG (0x02) - hold the LFO value for the rest of the sample period\n• COMPC (0x04) - use 1 minus the coefficient, for crossfading\n• COMPA (0x08) - invert the LFO output\n• RPTR2 (0x10) - read from the ramp's second pointer, half a cycle away\n• NA (0x20) - use the ramp value directly rather than as an address\n• Combine with |, for example: CHO RDA, RMP0, REG|COMPC, 0"
+                                },
+                                {
+                                    "name": "Symbols share values",
+                                    "syntax": "POT0 = RPTR2 = RUN = 0x10",
+                                    "description": "The assembler keeps one flat symbol table, so many reserved words resolve to the same number",
+                                    "notes": "• Meaning comes from where a name is used, not from the name itself\n• SKP POT0, 2 assembles happily and means SKP RUN, 2\n• Other collisions: SIN0 / COS0 / RDA / SIN all equal 0x00, and SIN1_RATE / RMP0 / SOF / REG / GEZ all equal 0x02\n• Every name listed in this section is reserved and cannot be reused as a label or EQU name"
+                                }
+                            ]
                         }
                     }
                 };
@@ -424,7 +524,9 @@
                     "math-operations": "MATH",
                     "logic-operations": "LOGIC",
                     "control-flow": "CONTROL",
-                    "lfo-generators": "LFO"
+                    "lfo-generators": "LFO",
+                    "registers": "REGISTERS",
+                    "reserved": "RESERVED"
                 };
 
                 // Create the opcodes content for the info panel
