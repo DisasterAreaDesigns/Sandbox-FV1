@@ -19,13 +19,18 @@ let simDryGain = null;
 let simAnalyser = null;
 let simStream = null;         // live input MediaStream, so we can stop it
 let simFileBuffer = null;
+let simFileBytes = null;      // undecoded copy, so a rate change can re-decode
 let simFileName = null;
 let simRunning = false;
 let simBypass = false;
 let simMeterTimer = null;
 let simLoadedProgram = null;
 
+// The FV-1's sample rate is its crystal frequency, so the selector is really
+// a crystal swap: a program's behaviour in samples never changes, but every
+// delay and sweep scales in absolute time. 32768 Hz is the stock part.
 const SIM_RATE = 32768;
+let simRate = SIM_RATE;
 
 // ---- worklet source -------------------------------------------------------
 
@@ -94,7 +99,7 @@ function buildWorkletSource() {
 // failed deep inside connect() with an unhelpful message.
 async function simInitEngine() {
     const ctx = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: SIM_RATE
+        sampleRate: simRate
     });
 
     let node;
@@ -144,12 +149,6 @@ async function simInitEngine() {
     simDryGain = dryGain;
     simAnalyser = analyser;
     simApplyLevels();
-
-    if (Math.abs(ctx.sampleRate - SIM_RATE) > 1) {
-        simStatus('Running at ' + Math.round(ctx.sampleRate) +
-            ' Hz, not 32768 Hz - delay and LFO times will be off by ' +
-            (ctx.sampleRate / SIM_RATE).toFixed(2) + 'x', 'warn');
-    }
 }
 
 // Drop the engine so the next Play press starts from scratch.
@@ -182,7 +181,7 @@ async function simStart() {
         await simConnectSource();
         simRunning = true;
         simUpdateTransport();
-        simStatus('Running at ' + Math.round(simCtx.sampleRate) + ' Hz', 'ok');
+        simReportRate();
     } catch (err) {
         simTeardownEngine();
         simRunning = false;
@@ -309,16 +308,36 @@ function simDisconnectSource() {
     }
 }
 
+// Decode against a context running at the rate we intend to play at, so the
+// browser does the resampling once, at decode time. A throwaway offline
+// context is used when the engine is not up, so a failed decode never leaves
+// a half-built engine behind in simCtx.
+async function simDecodeFile(bytes) {
+    const decodeCtx = simCtx || new (window.OfflineAudioContext ||
+        window.webkitOfflineAudioContext)(1, 1, simRate);
+    return decodeCtx.decodeAudioData(bytes.slice(0));
+}
+
+async function simRedecodeFile() {
+    if (!simFileBytes) return;
+    try {
+        simFileBuffer = await simDecodeFile(simFileBytes);
+    } catch (err) {
+        simStatus('Could not re-decode ' + (simFileName || 'the audio file') +
+            ' at the new rate: ' + err.message, 'error');
+    }
+}
+
 async function simLoadAudioFile(fileInput) {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
     try {
-        // Decode with a throwaway context so we never leave a half-built
-        // engine behind in simCtx.
-        const decodeCtx = simCtx || new (window.OfflineAudioContext ||
-            window.webkitOfflineAudioContext)(1, 1, SIM_RATE);
         const bytes = await file.arrayBuffer();
-        simFileBuffer = await decodeCtx.decodeAudioData(bytes);
+        // Keep the undecoded bytes: decodeAudioData resamples to the context
+        // rate and detaches the buffer it is given, so a later crystal change
+        // has to start from the original file rather than resample twice.
+        simFileBytes = bytes;
+        simFileBuffer = await simDecodeFile(bytes);
         simFileName = file.name;
         const label = document.getElementById('simFileLabel');
         if (label) {
@@ -350,6 +369,59 @@ function simOnToneFreqChange() {
     if (simSource && simSource.frequency) {
         simSource.frequency.setTargetAtTime(f, simCtx.currentTime, 0.01);
     }
+}
+
+// ---- clock ----------------------------------------------------------------
+
+// AudioContext.sampleRate is fixed at construction, so changing the crystal
+// means tearing the engine down and rebuilding it. That clears delay memory,
+// exactly as pulling the chip's power would.
+async function simOnRateChange() {
+    const sel = document.getElementById('simRate');
+    const rate = sel ? parseFloat(sel.value) : SIM_RATE;
+    if (!isFinite(rate) || rate === simRate) return;
+    simRate = rate;
+    simUpdateRateInfo();
+
+    const wasRunning = simRunning;
+    if (simRunning) simStop();
+    if (simNode) simTeardownEngine();
+    await simRedecodeFile();
+
+    if (wasRunning) {
+        await simStart();
+    } else {
+        simStatus('Clock set to ' + simRateLabel(), '');
+    }
+}
+
+// The browser is free to refuse the rate we asked for, and some do. The core
+// is clocked by the context, so a refusal silently rescales every delay and
+// sweep -- report the rate actually in use rather than let it pass as
+// correct. This is the only place the running rate is announced, so the
+// warning cannot be overwritten by a later 'Running at' message.
+function simReportRate() {
+    const actual = simCtx ? simCtx.sampleRate : simRate;
+    if (Math.abs(actual - simRate) > 1) {
+        simStatus('Browser gave ' + Math.round(actual) + ' Hz, not ' +
+            Math.round(simRate) + ' Hz - delay and LFO times are off by ' +
+            (actual / simRate).toFixed(2) + 'x', 'warn');
+    } else {
+        simStatus('Running at ' + Math.round(actual) + ' Hz', 'ok');
+    }
+}
+
+function simRateLabel() {
+    return (simRate / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kHz';
+}
+
+// The delay RAM is a fixed 32768 words, so its length in seconds -- and the
+// bandwidth -- both follow the crystal.
+function simUpdateRateInfo() {
+    const el = document.getElementById('simRateInfo');
+    if (!el) return;
+    el.textContent = 'Max delay ' + (32768 / simRate).toFixed(2) + ' s, ' +
+        'Nyquist ' + (simRate / 2000).toFixed(1) + ' kHz';
 }
 
 // ---- controls -------------------------------------------------------------
@@ -394,9 +466,8 @@ function simToggleBypass() {
     const el = document.getElementById('simBypass');
     simBypass = el ? el.checked : false;
     simApplyLevels();
-    simStatus(simBypass ? 'Bypassed - hearing dry signal' :
-        'Running at ' + Math.round(simCtx ? simCtx.sampleRate : SIM_RATE) + ' Hz',
-        simBypass ? 'warn' : 'ok');
+    if (simBypass) simStatus('Bypassed - hearing dry signal', 'warn');
+    else simReportRate();
 }
 
 // ---- display --------------------------------------------------------------
@@ -456,6 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
     simSendPots();
     simOnSourceChange();
     simOnToneFreqChange();
+    simUpdateRateInfo();
     if (typeof AudioWorkletNode === 'undefined') {
         simStatus('This browser has no AudioWorklet support - simulator unavailable', 'error');
         const btn = document.getElementById('simPlayBtn');

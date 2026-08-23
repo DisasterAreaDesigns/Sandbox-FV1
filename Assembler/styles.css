@@ -1384,7 +1384,8 @@ body.dark-mode #instructionsPanel {
 
 body.dark-mode .options-toggle,
 body.dark-mode .info-toggle,
-body.dark-mode .instructions-toggle {
+body.dark-mode .instructions-toggle,
+body.dark-mode .sim-toggle {
     --toggle-bg: #0d7377;
     --toggle-bg-hover: #14a1a6;
     --toggle-border: #0a5d61;
