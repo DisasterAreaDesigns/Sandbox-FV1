@@ -1051,22 +1051,25 @@ async function loadFile() {
         debugLog(`Using default start directory: ${preferredStartDirectory}`, 'verbose');
     }
     
-    // Try File System Access API first if project directory is available
-    try {
-        const [fileHandle] = await window.showOpenFilePicker(options);
-        const file = await fileHandle.getFile();
-        const fileContent = await file.text();
-        
-        // Process the file content directly (don't simulate file input)
-        processFileContent(fileContent, file.name);
-        
-        debugLog('File loaded via File System Access API: ' + file.name, 'success');
-        return;
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            return; // User cancelled
+    // Try the File System Access API where it exists. Safari and Firefox do
+    // not implement it, so those browsers go straight to the input fallback.
+    if (typeof window.showOpenFilePicker === 'function') {
+        try {
+            const [fileHandle] = await window.showOpenFilePicker(options);
+            const file = await fileHandle.getFile();
+            const fileContent = await file.text();
+
+            // Process the file content directly (don't simulate file input)
+            processFileContent(fileContent, file.name);
+
+            debugLog('File loaded via File System Access API: ' + file.name, 'success');
+            return;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                return; // User cancelled
+            }
+            console.warn('File System Access failed, falling back to input:', error);
         }
-        console.warn('File System Access failed, falling back to input:', error);
     }
     
     // Fallback to traditional file input
