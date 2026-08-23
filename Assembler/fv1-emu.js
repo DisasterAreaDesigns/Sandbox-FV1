@@ -353,10 +353,15 @@ class FV1Core {
                 : this.sinPhase[sel];
             return Math.floor(Math.sin(phase) * this.ACC_MAX);
         }
+        // A ramp is not normalised to full scale. Its accumulator counts the
+        // position in 1/1024 sample steps and CHO RDAL hands that raw count
+        // straight to ACC, so the value read is position / 8192: a 4096
+        // sample ramp reads 0 to 0.5, 2048 reads 0 to 0.25, and so on. Every
+        // program that turns a ramp into a triangle relies on the 0 to 0.5
+        // figure ("cho rdal,rmp0 / sof 1,-0.25 / absa"), and the servo idiom
+        // that steers a ramp to a delay position relies on the same scale.
         const i = sel - 2;
-        const amp = this.rampAmpOf(i);
-        const norm = amp > 0 ? this.rampPos[i] / amp : 0;
-        return Math.floor(norm * this.ACC_MAX);
+        return Math.floor(this.rampPos[i] * 1024);
     }
 
     // ---- delay RAM access ----------------------------------------------
