@@ -804,7 +804,8 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
    ========================= */
 .options-panel,
 .info-panel,
-#instructionsPanel {
+#instructionsPanel,
+#simPanel {
     position: fixed;
     top: 0;
     right: -330px; /* Hidden by default */
@@ -832,7 +833,8 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
 /* Open state for all panels */
 .options-panel.open,
 .info-panel.open,
-#instructionsPanel.open {
+#instructionsPanel.open,
+#simPanel.open {
     right: 0;
 }
 
@@ -841,7 +843,8 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
    ========================= */
 .options-toggle,
 .info-toggle,
-.instructions-toggle {
+.instructions-toggle,
+.sim-toggle {
     position: fixed;
     right: 0px;
     width: 30px;
@@ -877,10 +880,15 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
     top: calc(65% + 280px);
 }
 
+.sim-toggle {
+    top: calc(65% - 140px);
+}
+
 /* Hover effect */
 .options-toggle:hover,
 .info-toggle:hover,
-.instructions-toggle:hover {
+.instructions-toggle:hover,
+.sim-toggle:hover {
     background: var(--toggle-bg-hover, #45a049);
 }
 
@@ -1467,4 +1475,112 @@ body.dark-mode .opcodes-syntax {
 
 body.dark-mode .opcodes-notes {
     color: var(--flyout-text-muted, #999);
+}
+
+/* =========================
+   FV-1 Simulator Panel
+   ========================= */
+.sim-transport {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.flyout-content .sim-play-btn {
+    flex: 1;
+    font-weight: 600;
+    padding: 10px;
+}
+
+.flyout-content .sim-play-btn.sim-playing {
+    background: var(--toggle-bg, #4CAF50);
+    color: var(--toggle-text, #fff);
+    border-color: var(--toggle-bg, #4CAF50);
+}
+
+.sim-status {
+    font-size: 0.85em;
+    color: var(--flyout-text-muted, #666);
+    min-height: 1.4em;
+    margin-bottom: 8px;
+}
+
+.sim-status-ok { color: #2e7d32; }
+.sim-status-warn { color: #b26a00; }
+.sim-status-error { color: #c62828; }
+
+.sim-meter {
+    height: 8px;
+    background: var(--flyout-button-bg, #e9ecef);
+    border: 1px solid var(--flyout-border, #dee2e6);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.sim-meter-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--toggle-bg, #4CAF50);
+    transition: width 0.08s linear;
+}
+
+.sim-meter-bar.sim-meter-clip { background: #c62828; }
+
+.flyout-content .sim-slider-row {
+    display: grid;
+    grid-template-columns: 52px 1fr 52px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.sim-slider-row label {
+    font-size: 0.9em;
+    color: var(--flyout-text, #333);
+}
+
+.sim-slider-row input[type="range"] {
+    width: 100%;
+    margin: 0;
+}
+
+.sim-value {
+    font-size: 0.82em;
+    color: var(--flyout-text-muted, #666);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.flyout-content .sim-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.flyout-content .sim-row > button {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.sim-program-state {
+    font-size: 0.82em;
+    color: var(--flyout-text-muted, #666);
+}
+
+.sim-program-state.loaded { color: #2e7d32; }
+
+.sim-note {
+    font-size: 0.8em;
+    color: var(--flyout-text-muted, #666);
+    line-height: 1.5;
+}
+
+.sim-note p { margin: 0 0 8px 0; }
+
+.sim-note code {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.95em;
 }

@@ -548,6 +548,8 @@
         <script src="assembler.js"></script>
         <script src="debug_config.js"></script>
         <script src="ui.js"></script>
+        <script src="fv1-emu.js"></script>
+        <script src="fv1-sim.js"></script>
         <script src="user-preferences.js"></script>
     </div>
 
@@ -555,6 +557,7 @@
     <div class="options-toggle" onclick="toggleFlyout('options')">OPTIONS</div>
     <div class="info-toggle" onclick="toggleFlyout('info')">INFO</div>
     <div class="instructions-toggle" onclick="toggleFlyout('instructions')">HELP</div>
+    <div class="sim-toggle" onclick="toggleFlyout('sim')">SIM</div>
 
     <!-- Options flyout panel -->
     <div id="optionsPanel" class="options-panel">
@@ -701,6 +704,128 @@
         </div>
     </div>
 
+    <!-- Simulator flyout panel -->
+    <div id="simPanel" class="info-panel">
+        <div class="flyout-header">
+            <h3>FV-1 Simulator</h3>
+        </div>
+        <div class="flyout-content">
+
+            <div class="flyout-section">
+                <div class="sim-transport">
+                    <button id="simPlayBtn" class="sim-play-btn" onclick="simTogglePlay()">Play</button>
+                    <button onclick="simPanic()" title="Stop and clear delay memory">Reset</button>
+                </div>
+                <div id="simStatus" class="sim-status">Idle</div>
+                <div class="sim-meter"><div id="simMeterBar" class="sim-meter-bar"></div></div>
+            </div>
+
+            <div class="flyout-section">
+                <h4>Program</h4>
+                <div class="options">
+                    <div class="sim-row">
+                        <button onclick="simLoadProgram()">Load Current Build</button>
+                        <span id="simProgramState" class="sim-program-state">Not loaded</span>
+                    </div>
+                    <label>
+                        <input type="checkbox" id="simAutoReload" checked>
+                        Reload simulator on each assemble
+                    </label>
+                </div>
+            </div>
+
+            <div class="flyout-section">
+                <h4>Input Source</h4>
+                <div class="options">
+                    <label>
+                        Source:
+                        <select id="simSource" onchange="simOnSourceChange()">
+                            <option value="tone">Sine tone</option>
+                            <option value="saw">Sawtooth</option>
+                            <option value="square">Square</option>
+                            <option value="noise">White noise</option>
+                            <option value="file">Audio file</option>
+                            <option value="input">Live input</option>
+                        </select>
+                    </label>
+
+                    <div id="simToneRow" class="sim-slider-row">
+                        <label for="simToneFreq">Frequency</label>
+                        <input type="range" id="simToneFreq" min="20" max="8000" step="1"
+                               value="440" oninput="simOnToneFreqChange()">
+                        <span id="simToneFreqValue" class="sim-value">440 Hz</span>
+                    </div>
+
+                    <div id="simFileRow" class="sim-row" style="display:none;">
+                        <input type="file" id="simFileInput" accept="audio/*"
+                               onchange="simLoadAudioFile(this)">
+                        <span id="simFileLabel" class="sim-value">No file chosen</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flyout-section">
+                <h4>Pots</h4>
+                <div class="options">
+                    <div class="sim-slider-row">
+                        <label for="simPot0">POT0</label>
+                        <input type="range" id="simPot0" min="0" max="100" value="50"
+                               oninput="simSendPots()">
+                        <span id="simPot0Value" class="sim-value">50%</span>
+                    </div>
+                    <div class="sim-slider-row">
+                        <label for="simPot1">POT1</label>
+                        <input type="range" id="simPot1" min="0" max="100" value="50"
+                               oninput="simSendPots()">
+                        <span id="simPot1Value" class="sim-value">50%</span>
+                    </div>
+                    <div class="sim-slider-row">
+                        <label for="simPot2">POT2</label>
+                        <input type="range" id="simPot2" min="0" max="100" value="50"
+                               oninput="simSendPots()">
+                        <span id="simPot2Value" class="sim-value">50%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flyout-section">
+                <h4>Levels</h4>
+                <div class="options">
+                    <div class="sim-slider-row">
+                        <label for="simInputLevel">Input</label>
+                        <input type="range" id="simInputLevel" min="-40" max="12" step="1"
+                               value="-6" oninput="simApplyLevels()">
+                        <span id="simInputLevelValue" class="sim-value">-6 dB</span>
+                    </div>
+                    <div class="sim-slider-row">
+                        <label for="simOutputLevel">Output</label>
+                        <input type="range" id="simOutputLevel" min="-40" max="12" step="1"
+                               value="0" oninput="simApplyLevels()">
+                        <span id="simOutputLevelValue" class="sim-value">0 dB</span>
+                    </div>
+                    <label>
+                        <input type="checkbox" id="simBypass" onchange="simToggleBypass()">
+                        Bypass (hear dry signal)
+                    </label>
+                </div>
+            </div>
+
+            <div class="flyout-section">
+                <div class="sim-note">
+                    <p>The simulator runs your assembled program through a software
+                    FV-1 at the chip's native 32768 Hz, including 24-bit accumulator
+                    saturation and the 14-bit companded delay memory that gives the
+                    FV-1 its character.</p>
+                    <p>LFO rates and <code>CHO</code> interpolation are modelled
+                    behaviourally rather than bit-exactly, so modulated effects will
+                    sound right but may not match hardware sample for sample. Always
+                    confirm on the pedal before shipping.</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <!-- Info flyout panel -->
     <div id="infoPanel" class="info-panel">
         <div class="flyout-header">
@@ -726,6 +851,17 @@
                     <li><i><b>Download Binary</b> and <b>Download C Headers</b> output the assembled data in alternate format for use with more advanced applications and are not used with <b>Sandbox FV1</b> hardware</i></li>
                     <li><i>When satisfied with your source code, press the <b>Save Source...</b> button to download a local copy.</i></li>
                 </ul>
+                <h4>Simulator</h4>
+                <p>The <b>SIM</b> tab runs your assembled program through a software FV-1 so you can hear it without hardware.</p>
+                <ul>
+                    <li><i>Press <b>Assemble</b>, open the <b>SIM</b> tab, then press <b>Play</b>.</i></li>
+                    <li><i>Choose an <b>Input Source</b>: a test tone, white noise, an audio file from your computer, or live input from a microphone or interface.</i></li>
+                    <li><i>The <b>POT0-POT2</b> sliders correspond to the three knobs on the Sandbox hardware.</i></li>
+                    <li><i>With <b>Reload simulator on each assemble</b> ticked, every successful build is loaded straight into the simulator, so you can edit and re-assemble while it plays.</i></li>
+                    <li><i><b>Bypass</b> compares against the dry signal, and <b>Reset</b> clears the simulated delay memory.</i></li>
+                </ul>
+                <p>The simulator models the 24-bit accumulator saturation and the 14-bit companded delay memory that give the FV-1 its character. LFO rates and <b>CHO</b> interpolation are modelled behaviourally, so modulated effects sound correct but are not sample-identical to hardware. Confirm on the pedal before shipping a design.</p>
+
                 <h4>Connecting to Hardware</h4>
                 <p><i>Connect your <b>Sandbox FV1</b> pedal to your computer using a suitable USB cable. A new removable drive labeled <b>SANDBOX-FV1</b> should appear.</i></p>
                 <ul>
@@ -781,7 +917,7 @@
             const isOpen = panel.classList.contains('open');
 
             // Close all other panels
-            ['options', 'info', 'instructions'].forEach(t => {
+            ['options', 'info', 'instructions', 'sim'].forEach(t => {
                 if (t !== type) {
                     const p = document.getElementById(`${t}Panel`);
                     const tog = document.querySelector(`.${t}-toggle`);
@@ -844,6 +980,11 @@
 
             if (instructionsPanel && instructionsToggle)
                 instructionsToggle.style.right = instructionsPanel.classList.contains('open') ? '630px' : '0px';
+
+            const simPanel = document.getElementById('simPanel');
+            const simToggle = document.querySelector('.sim-toggle');
+            if (simPanel && simToggle)
+                simToggle.style.right = simPanel.classList.contains('open') ? '330px' : '0px';
         };
 
         // Global keyboard shortcuts that work even when Monaco has focus

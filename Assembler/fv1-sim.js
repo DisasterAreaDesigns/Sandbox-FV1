@@ -1,0 +1,467 @@
+// FV-1 Simulator -- Web Audio front end for fv1-emu.js
+//
+// Builds an AudioWorklet that runs the FV-1 core at the chip's native
+// 32768 Hz, feeds it a test tone, an audio file or live input, and lets the
+// three pots be swept while it plays.
+//
+// The worklet is assembled at runtime from FV1Core.toString() and loaded via
+// a blob: URL. That is deliberate -- addModule() on a plain script file is
+// blocked by CORS when the assembler is opened from a file:// URL, which is
+// how a lot of people will run this. Building the module as a blob keeps the
+// simulator working both locally and when served over http.
+
+let simCtx = null;
+let simNode = null;
+let simSource = null;         // current source node
+let simInputGain = null;
+let simOutputGain = null;
+let simDryGain = null;
+let simAnalyser = null;
+let simStream = null;         // live input MediaStream, so we can stop it
+let simFileBuffer = null;
+let simFileName = null;
+let simRunning = false;
+let simBypass = false;
+let simMeterTimer = null;
+let simLoadedProgram = null;
+
+const SIM_RATE = 32768;
+
+// ---- worklet source -------------------------------------------------------
+
+function buildWorkletSource() {
+    if (typeof FV1Core === 'undefined') {
+        throw new Error('fv1-emu.js not loaded');
+    }
+    const processor = [
+        'class FV1Processor extends AudioWorkletProcessor {',
+        '    constructor() {',
+        '        super();',
+        '        this.core = new FV1Core();',
+        '        this.pots = [0.5, 0.5, 0.5];',
+        '        this.peak = 0;',
+        '        this.frames = 0;',
+        '        this.port.onmessage = (e) => {',
+        '            const d = e.data;',
+        '            if (d.type === "program") {',
+        '                this.core.setProgram(new Uint8Array(d.bytes));',
+        '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
+        '            } else if (d.type === "pots") {',
+        '                this.pots = d.values;',
+        '            } else if (d.type === "reset") {',
+        '                this.core.reset();',
+        '            }',
+        '        };',
+        '    }',
+        '    process(inputs, outputs) {',
+        '        const input = inputs[0];',
+        '        const output = outputs[0];',
+        '        const outL = output[0];',
+        '        const outR = output.length > 1 ? output[1] : null;',
+        '        const hasIn = input && input.length > 0 && input[0].length > 0;',
+        '        const inL = hasIn ? input[0] : null;',
+        '        const inR = hasIn && input.length > 1 ? input[1] : inL;',
+        '        for (let i = 0; i < outL.length; i++) {',
+        '            this.core.setPots(this.pots[0], this.pots[1], this.pots[2]);',
+        '            this.core.run(inL ? inL[i] : 0, inR ? inR[i] : 0);',
+        '            const l = this.core.getDACL();',
+        '            const r = this.core.getDACR();',
+        '            outL[i] = l;',
+        '            if (outR) outR[i] = r;',
+        '            const m = Math.max(Math.abs(l), Math.abs(r));',
+        '            if (m > this.peak) this.peak = m;',
+        '        }',
+        '        this.frames += outL.length;',
+        '        if (this.frames >= 2048) {',
+        '            this.port.postMessage({type: "level", peak: this.peak});',
+        '            this.peak = 0;',
+        '            this.frames = 0;',
+        '        }',
+        '        return true;',
+        '    }',
+        '}',
+        'registerProcessor("fv1-processor", FV1Processor);'
+    ].join('\n');
+
+    return FV1Core.toString() + '\n' + processor;
+}
+
+// ---- engine ---------------------------------------------------------------
+
+// Build the whole audio graph, publishing to the module-level handles only
+// once every piece succeeded. Partial construction used to leave simCtx set
+// with null gain nodes, so a second Play press skipped setup entirely and
+// failed deep inside connect() with an unhelpful message.
+async function simInitEngine() {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: SIM_RATE
+    });
+
+    let node;
+    try {
+        const src = buildWorkletSource();
+        const url = URL.createObjectURL(new Blob([src], {type: 'application/javascript'}));
+        try {
+            await ctx.audioWorklet.addModule(url);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+        node = new AudioWorkletNode(ctx, 'fv1-processor', {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [2]
+        });
+    } catch (err) {
+        try { await ctx.close(); } catch (e) { /* already closing */ }
+        if (location.protocol === 'file:') {
+            throw new Error('the audio engine will not load from a file:// page. ' +
+                'Serve the Assembler folder over http instead - see the readme.');
+        }
+        throw err;
+    }
+
+    node.port.onmessage = (e) => {
+        if (e.data.type === 'level') simUpdateMeter(e.data.peak);
+    };
+
+    const inputGain = ctx.createGain();
+    const outputGain = ctx.createGain();
+    const dryGain = ctx.createGain();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+
+    inputGain.connect(node);
+    node.connect(outputGain);
+    dryGain.connect(outputGain);
+    outputGain.connect(analyser);
+    analyser.connect(ctx.destination);
+    dryGain.gain.value = 0;
+
+    simCtx = ctx;
+    simNode = node;
+    simInputGain = inputGain;
+    simOutputGain = outputGain;
+    simDryGain = dryGain;
+    simAnalyser = analyser;
+    simApplyLevels();
+
+    if (Math.abs(ctx.sampleRate - SIM_RATE) > 1) {
+        simStatus('Running at ' + Math.round(ctx.sampleRate) +
+            ' Hz, not 32768 Hz - delay and LFO times will be off by ' +
+            (ctx.sampleRate / SIM_RATE).toFixed(2) + 'x', 'warn');
+    }
+}
+
+// Drop the engine so the next Play press starts from scratch.
+function simTeardownEngine() {
+    simDisconnectSource();
+    if (simCtx) {
+        try { simCtx.close(); } catch (e) { /* already closed */ }
+    }
+    simCtx = null;
+    simNode = null;
+    simInputGain = null;
+    simOutputGain = null;
+    simDryGain = null;
+    simAnalyser = null;
+}
+
+async function simStart() {
+    if (simRunning) return;
+    try {
+        // Gate on the node, not the context: a half-built engine must rebuild.
+        if (!simNode) await simInitEngine();
+
+        await simCtx.resume();
+
+        // Always push the program to the worklet here. simLoadedProgram may
+        // have been captured by the assemble hook before the engine existed,
+        // in which case the worklet itself still has nothing loaded.
+        simLoadProgram();
+
+        await simConnectSource();
+        simRunning = true;
+        simUpdateTransport();
+        simStatus('Running at ' + Math.round(simCtx.sampleRate) + ' Hz', 'ok');
+    } catch (err) {
+        simTeardownEngine();
+        simRunning = false;
+        simUpdateTransport();
+        simStatus('Could not start: ' + err.message, 'error');
+        console.error('[fv1-sim]', err);
+    }
+}
+
+function simStop() {
+    if (!simRunning) return;
+    simDisconnectSource();
+    if (simCtx) simCtx.suspend();
+    simRunning = false;
+    simUpdateTransport();
+    simUpdateMeter(0);
+    simStatus('Stopped', '');
+}
+
+function simPanic() {
+    simStop();
+    if (simNode) simNode.port.postMessage({type: 'reset'});
+    simStatus('Engine reset - delay memory cleared', '');
+}
+
+// ---- program loading ------------------------------------------------------
+
+// Pull the current build out of the assembler and hand it to the worklet.
+// Safe to call before the engine exists: the bytes are cached and pushed
+// again once the worklet is up.
+function simLoadProgram() {
+    if (typeof assembledData !== 'undefined' && assembledData) {
+        simLoadedProgram = new Uint8Array(assembledData);
+    }
+    if (!simLoadedProgram) {
+        simStatus('Nothing assembled yet - press Assemble first', 'warn');
+        return false;
+    }
+    if (simNode) {
+        simNode.port.postMessage({
+            type: 'program',
+            bytes: simLoadedProgram.buffer.slice(0)
+        });
+    }
+    const el = document.getElementById('simProgramState');
+    if (el) {
+        el.textContent = simNode
+            ? 'Loaded (' + simLoadedProgram.length + ' bytes)'
+            : 'Ready (' + simLoadedProgram.length + ' bytes) - press Play';
+        el.className = 'sim-program-state loaded';
+    }
+    return true;
+}
+
+// ---- sources --------------------------------------------------------------
+
+function simSourceType() {
+    const el = document.getElementById('simSource');
+    return el ? el.value : 'tone';
+}
+
+async function simConnectSource() {
+    simDisconnectSource();
+    if (!simCtx || !simInputGain || !simDryGain) return;
+    const type = simSourceType();
+
+    if (type === 'tone' || type === 'saw' || type === 'square') {
+        const osc = simCtx.createOscillator();
+        osc.type = type === 'tone' ? 'sine' : (type === 'saw' ? 'sawtooth' : 'square');
+        osc.frequency.value = simNumber('simToneFreq', 440);
+        osc.start();
+        simSource = osc;
+    } else if (type === 'noise') {
+        const len = Math.floor(simCtx.sampleRate * 2);
+        const buf = simCtx.createBuffer(1, len, simCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+        const node = simCtx.createBufferSource();
+        node.buffer = buf;
+        node.loop = true;
+        node.start();
+        simSource = node;
+    } else if (type === 'file') {
+        if (!simFileBuffer) {
+            simStatus('Choose an audio file first', 'warn');
+            return;
+        }
+        const node = simCtx.createBufferSource();
+        node.buffer = simFileBuffer;
+        node.loop = true;
+        node.start();
+        simSource = node;
+    } else if (type === 'input') {
+        try {
+            simStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                }
+            });
+            simSource = simCtx.createMediaStreamSource(simStream);
+        } catch (err) {
+            simStatus('Microphone access denied or unavailable', 'error');
+            return;
+        }
+    }
+
+    if (simSource) {
+        simSource.connect(simInputGain);
+        simSource.connect(simDryGain);
+    }
+}
+
+function simDisconnectSource() {
+    if (simSource) {
+        try { simSource.stop(); } catch (e) { /* live input has no stop() */ }
+        try { simSource.disconnect(); } catch (e) { /* already gone */ }
+        simSource = null;
+    }
+    if (simStream) {
+        simStream.getTracks().forEach(t => t.stop());
+        simStream = null;
+    }
+}
+
+async function simLoadAudioFile(fileInput) {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    try {
+        // Decode with a throwaway context so we never leave a half-built
+        // engine behind in simCtx.
+        const decodeCtx = simCtx || new (window.OfflineAudioContext ||
+            window.webkitOfflineAudioContext)(1, 1, SIM_RATE);
+        const bytes = await file.arrayBuffer();
+        simFileBuffer = await decodeCtx.decodeAudioData(bytes);
+        simFileName = file.name;
+        const label = document.getElementById('simFileLabel');
+        if (label) {
+            label.textContent = file.name + ' (' + simFileBuffer.duration.toFixed(1) + 's)';
+        }
+        const sel = document.getElementById('simSource');
+        if (sel) sel.value = 'file';
+        simOnSourceChange();
+        simStatus('Loaded ' + file.name, 'ok');
+    } catch (err) {
+        simStatus('Could not decode that file: ' + err.message, 'error');
+    }
+}
+
+async function simOnSourceChange() {
+    const type = simSourceType();
+    const toneRow = document.getElementById('simToneRow');
+    const fileRow = document.getElementById('simFileRow');
+    if (toneRow) toneRow.style.display =
+        (type === 'tone' || type === 'saw' || type === 'square') ? '' : 'none';
+    if (fileRow) fileRow.style.display = (type === 'file') ? '' : 'none';
+    if (simRunning) await simConnectSource();
+}
+
+function simOnToneFreqChange() {
+    const f = simNumber('simToneFreq', 440);
+    const out = document.getElementById('simToneFreqValue');
+    if (out) out.textContent = f + ' Hz';
+    if (simSource && simSource.frequency) {
+        simSource.frequency.setTargetAtTime(f, simCtx.currentTime, 0.01);
+    }
+}
+
+// ---- controls -------------------------------------------------------------
+
+function simNumber(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const v = parseFloat(el.value);
+    return isNaN(v) ? fallback : v;
+}
+
+function simSendPots() {
+    const values = [
+        simNumber('simPot0', 50) / 100,
+        simNumber('simPot1', 50) / 100,
+        simNumber('simPot2', 50) / 100
+    ];
+    for (let i = 0; i < 3; i++) {
+        const out = document.getElementById('simPot' + i + 'Value');
+        if (out) out.textContent = Math.round(values[i] * 100) + '%';
+    }
+    if (simNode) simNode.port.postMessage({type: 'pots', values: values});
+}
+
+function simApplyLevels() {
+    if (!simCtx) return;
+    const inDb = simNumber('simInputLevel', 0);
+    const outDb = simNumber('simOutputLevel', 0);
+    const inLabel = document.getElementById('simInputLevelValue');
+    const outLabel = document.getElementById('simOutputLevelValue');
+    if (inLabel) inLabel.textContent = inDb.toFixed(0) + ' dB';
+    if (outLabel) outLabel.textContent = outDb.toFixed(0) + ' dB';
+
+    const inGain = Math.pow(10, inDb / 20);
+    const outGain = Math.pow(10, outDb / 20);
+    if (simInputGain) simInputGain.gain.value = simBypass ? 0 : inGain;
+    if (simDryGain) simDryGain.gain.value = simBypass ? inGain : 0;
+    if (simOutputGain) simOutputGain.gain.value = outGain;
+}
+
+function simToggleBypass() {
+    const el = document.getElementById('simBypass');
+    simBypass = el ? el.checked : false;
+    simApplyLevels();
+    simStatus(simBypass ? 'Bypassed - hearing dry signal' :
+        'Running at ' + Math.round(simCtx ? simCtx.sampleRate : SIM_RATE) + ' Hz',
+        simBypass ? 'warn' : 'ok');
+}
+
+// ---- display --------------------------------------------------------------
+
+function simStatus(msg, kind) {
+    const el = document.getElementById('simStatus');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'sim-status' + (kind ? ' sim-status-' + kind : '');
+}
+
+function simUpdateTransport() {
+    const btn = document.getElementById('simPlayBtn');
+    if (btn) {
+        btn.textContent = simRunning ? 'Stop' : 'Play';
+        btn.classList.toggle('sim-playing', simRunning);
+    }
+}
+
+function simUpdateMeter(peak) {
+    const bar = document.getElementById('simMeterBar');
+    if (!bar) return;
+    const pct = Math.min(100, peak * 100);
+    bar.style.width = pct.toFixed(1) + '%';
+    bar.classList.toggle('sim-meter-clip', peak >= 0.999);
+}
+
+// ---- wiring ---------------------------------------------------------------
+
+function simTogglePlay() {
+    if (simRunning) simStop(); else simStart();
+}
+
+// Reload the simulator whenever a new build succeeds, so the loop is
+// edit -> assemble -> hear it, with no extra click.
+function simHookAssemble() {
+    if (typeof window.assemble !== 'function') return;
+    if (window.assemble.__simHooked) return;
+    const original = window.assemble;
+    const wrapped = function () {
+        const result = original.apply(this, arguments);
+        if (typeof assembledData !== 'undefined' && assembledData) {
+            simLoadProgram();
+            const auto = document.getElementById('simAutoReload');
+            if (simRunning && simNode && auto && auto.checked) {
+                simNode.port.postMessage({type: 'reset'});
+            }
+        }
+        return result;
+    };
+    wrapped.__simHooked = true;
+    window.assemble = wrapped;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    simHookAssemble();
+    simSendPots();
+    simOnSourceChange();
+    simOnToneFreqChange();
+    if (typeof AudioWorkletNode === 'undefined') {
+        simStatus('This browser has no AudioWorklet support - simulator unavailable', 'error');
+        const btn = document.getElementById('simPlayBtn');
+        if (btn) btn.disabled = true;
+    } else if (location.protocol === 'file:') {
+        simStatus('Opened as a local file - if Play fails, serve this folder ' +
+            'over http (see readme)', 'warn');
+    }
+});

@@ -18,11 +18,24 @@ The hardware is very simple, incorporating a high-quality analog front-end that 
 
 Programming is accomplished using the aforementioned RP2040 board - we've used a Waveshare RP2040 Zero for its compact form factor and handy USB-C port, but clones of this part or other variations may also work.  the RP2040 code is implemented in CircuitPython for ease of deployment and modification.  To program a new algorithm on the Sandbox EEPROM, simply copy an assembled .HEX or .BIN file to the RP2040 CIRCUITPY or SANDBOX removable drive.  Name the program 0.HEX to program algorithm zero, 1.HEX for program 1, and so on.  Adding any other named .BIN or .HEX file will write program #3, which is the program accessed if no toggle switches are assembled to the Sandbox PCBA.
 
+We've also added an FV-1 simulator to the web app.  The assembled program runs through a software model of the chip at its native 32.768 kHz, so you can audition an algorithm on a test tone, an audio file, or live input before you ever program the hardware.  The three pot controls are on screen, and each successful build reloads into the simulator while it plays.  The simulator models accumulator saturation and the FV-1's companded delay memory, though LFO and chorus behaviour is approximated - always confirm a design on real hardware.
+
 So it's a web app and a pedal.  Hook 'em up and write some code!
+
+## Running the Assembler Locally
+The web app needs to be served over http - opening `Assembler/index.html` directly as a `file://` page will not work.  Browsers block the audio engine the simulator depends on from `file://` origins, and the directory and serial access used to talk to the hardware need a secure context too.  `localhost` counts as secure, so any static file server will do:
+
+```
+python3 -m http.server 8000 --directory Assembler
+```
+
+Then open <http://localhost:8000> in Chrome or Edge.  If you prefer Node, `npx serve Assembler` works the same way.
+
+Chrome or Edge are required for programming hardware and selecting folders, since Firefox and Safari do not implement the File System Access and Web Serial APIs.  The simulator itself works in any browser with AudioWorklet support.
 
 ## What's In This Repo?
 * **ASFV1 Source:**  copy of the Python source for asfv1
-* **Assembler:**  JavaScript Web Application for assembling FV-1 programs
+* **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`)
 * **Firmware**  CircuitPython code for the RP2040 Zero program module
 * **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler
 * **Hardware**  Schematic and PCB files for Sandbox pedal hardware
