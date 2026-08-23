@@ -917,10 +917,11 @@
                     FV-1 at the chip's native 32768 Hz, including 24-bit accumulator
                     saturation and the 14-bit companded delay memory that gives the
                     FV-1 its character.</p>
-                    <p>LFO rates and <code>CHO</code> interpolation are modelled
-                    behaviourally rather than bit-exactly, so modulated effects will
-                    sound right but may not match hardware sample for sample. Always
-                    confirm on the pedal before shipping.</p>
+                    <p>LFO rates and depths follow the equations in Spin's
+                    application note AN-0001. The fractional interpolation inside
+                    <code>CHO</code> is approximated, so chorus and flange will sound
+                    right but may not match hardware sample for sample. Always confirm
+                    on the pedal before shipping.</p>
                 </div>
             </div>
 
@@ -961,7 +962,7 @@
                     <li><i>With <b>Reload simulator on each assemble</b> ticked, every successful build is loaded straight into the simulator, so you can edit and re-assemble while it plays.</i></li>
                     <li><i><b>Bypass</b> compares against the dry signal, and <b>Reset</b> clears the simulated delay memory.</i></li>
                 </ul>
-                <p>The simulator models the 24-bit accumulator saturation and the 14-bit companded delay memory that give the FV-1 its character. LFO rates and <b>CHO</b> interpolation are modelled behaviourally, so modulated effects sound correct but are not sample-identical to hardware. Confirm on the pedal before shipping a design.</p>
+                <p>The simulator models the 24-bit accumulator saturation and the 14-bit companded delay memory that give the FV-1 its character. LFO rates and depths follow the equations in Spin's application note AN-0001. The fractional interpolation inside <b>CHO</b> is approximated, so chorus and flange sound correct but are not sample-identical to hardware. Confirm on the pedal before shipping a design.</p>
 
                 <h4>Connecting to Hardware</h4>
                 <p><i>Connect your <b>Sandbox FV1</b> pedal to your computer using a suitable USB cable. A new removable drive labeled <b>SANDBOX-FV1</b> should appear.</i></p>

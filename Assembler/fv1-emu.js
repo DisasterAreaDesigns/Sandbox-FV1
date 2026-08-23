@@ -20,10 +20,13 @@
 // Fidelity notes:
 //   - ACC saturation, coefficient quantisation and delay RAM companding are
 //     modelled exactly. These are what give the FV-1 its character.
-//   - LFO rates and CHO interpolation are behavioural rather than bit-exact.
-//     ElmGen's own CHO simulation is marked unfinished; the datasheet does
-//     not fully specify the interpolation. Chorus/flange sweeps will sound
-//     right but may not be sample-identical to hardware.
+//   - LFO rates and amplitudes follow the equations in Spin's application
+//     note AN-0001 (Basics of the LFOs in the FV-1) and are checked against
+//     the worked examples in it, so sweep rates and depths match hardware.
+//   - CHO interpolation is still behavioural. The fractional interpolation
+//     between adjacent delay samples is only sketched in the documentation,
+//     and ElmGen's own CHO simulation is marked unfinished. Chorus and
+//     flange will sound right but may not be sample-identical.
 //
 // This class must stay self-contained (no references to anything outside
 // itself) because fv1-sim.js stringifies it with toString() to build the
@@ -58,6 +61,10 @@ class FV1Core {
         this.OP_EXP = 0x0C; this.OP_SOF = 0x0D; this.OP_AND = 0x0E;
         this.OP_OR = 0x0F; this.OP_XOR = 0x10; this.OP_SKP = 0x11;
         this.OP_WLDX = 0x12; this.OP_JAM = 0x13; this.OP_CHO = 0x14;
+        // WLDS and WLDR share opcode 0x12. The decoder rewrites the ramp form
+        // to this synthetic opcode so the two never have to be told apart by
+        // a flag bit inside an operand field.
+        this.OP_WLDR = 0x1F;
 
         // SKP condition flags
         this.SKP_RUN = 0x10; this.SKP_ZRC = 0x08; this.SKP_ZRO = 0x04;
@@ -209,9 +216,10 @@ class FV1Core {
                 // them apart: SIN0/SIN1 are 0b00/0b01 and RMP0/RMP1 are
                 // 0b10/0b11, so bit 30 is set only for the ramp form.
                 if ((word >>> 30) & 0x01) {
+                    this.iOp[i] = this.OP_WLDR;
                     this.iA[i] = (word >>> 29) & 0x01;          // ramp 0 or 1
                     this.iB[i] = (word >>> 13) & 0xFFFF;        // frequency
-                    this.iC[i] = 0x100 | ((word >>> 5) & 0x03); // 0x100 marks WLDR
+                    this.iC[i] = (word >>> 5) & 0x03;           // range code
                 } else {
                     this.iA[i] = (word >>> 29) & 0x01;          // sin 0 or 1
                     this.iB[i] = (word >>> 20) & 0x1FF;         // frequency
@@ -273,8 +281,14 @@ class FV1Core {
     // by writing SIN0_RATE or RMP0_RATE at runtime is a standard idiom, and
     // programs like flanger.spn declare WLDR with a rate of 0 and then drive
     // the rate register entirely from a pot.
+    // Ka, the 15-bit amplitude coefficient. AN-0001: ACC[22:8] maps to the
+    // amplitude field. Ka = N * 32767 / 16385 where N is the total delay
+    // length, so the peak excursion either side of centre is Ka / 4 samples.
+    // The app note's own example, wlds SIN0,5,16384, is documented as
+    // "+/-4096 samples for a total delay requirement of 8193".
     sinAmpOf(i) {
-        return Math.floor(this.regs[i === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] / 256);
+        const ka = Math.floor(this.regs[i === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] / 256) & 0x7FFF;
+        return ka / 4;
     }
 
     rampAmpOf(i) {
@@ -288,8 +302,12 @@ class FV1Core {
     updateLFOs() {
         for (let i = 0; i < 2; i++) {
             const rateReg = this.regs[i === 0 ? this.SIN0_RATE : this.SIN1_RATE];
-            const freq = Math.floor(rateReg / 16384);            // >> 14
-            this.sinPhase[i] += freq * 2 * Math.PI / 131072;
+            // AN-0001: ACC[22:14] maps to the 9-bit frequency field, and
+            // Kf = 2^17 * (2*pi*f / R). Rearranged, the stored value is the
+            // angular step in radians per sample divided by 2^17, giving
+            // f = Kf * R / (2*pi * 2^17) - about 0 to 20 Hz over Kf 0..511.
+            const freq = Math.floor(rateReg / 16384) & 0x1FF;
+            this.sinPhase[i] += freq / 131072;
             if (this.sinPhase[i] > Math.PI * 2) this.sinPhase[i] -= Math.PI * 2;
             else if (this.sinPhase[i] < -Math.PI * 2) this.sinPhase[i] += Math.PI * 2;
         }
@@ -511,23 +529,27 @@ class FV1Core {
                 return pc + 1 + (doSkip ? b : 0);
             }
 
-            case this.OP_WLDX:
-                if (c & 0x100) {
-                    // WLDR: load ramp LFO rate and range into the registers
-                    const sel = a & 0x01;
-                    let rateReg = (this.sext(b, 16) & 0x7FFF) * 256;
-                    if (this.sext(b, 16) < 0) rateReg = -rateReg;
-                    this.regs[sel === 0 ? this.RMP0_RATE : this.RMP1_RATE] = rateReg;
-                    this.regs[sel === 0 ? this.RMP0_RANGE : this.RMP1_RANGE] = c & 0x03;
-                    this.rampPos[sel] = 0;
-                } else {
-                    // WLDS: load sine LFO rate and range into the registers
-                    const sel = a & 0x01;
-                    this.regs[sel === 0 ? this.SIN0_RATE : this.SIN1_RATE] = (b & 0x1FF) * 16384;
-                    this.regs[sel === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] = (c & 0x7FFF) * 256;
-                    this.sinPhase[sel] = 0;
-                }
+            case this.OP_WLDX: {
+                // WLDS: load sine LFO rate and range into the registers.
+                // AN-0001: ACC[22:14] holds Kf and ACC[22:8] holds Ka.
+                const sel = a & 0x01;
+                this.regs[sel === 0 ? this.SIN0_RATE : this.SIN1_RATE] = (b & 0x1FF) * 16384;
+                this.regs[sel === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] = (c & 0x7FFF) * 256;
+                this.sinPhase[sel] = 0;
                 break;
+            }
+
+            case this.OP_WLDR: {
+                // WLDR: load ramp LFO rate and range into the registers
+                const sel = a & 0x01;
+                const rate = this.sext(b, 16);
+                let rateReg = (Math.abs(rate) & 0x7FFF) * 256;
+                if (rate < 0) rateReg = -rateReg;
+                this.regs[sel === 0 ? this.RMP0_RATE : this.RMP1_RATE] = rateReg;
+                this.regs[sel === 0 ? this.RMP0_RANGE : this.RMP1_RANGE] = c & 0x03;
+                this.rampPos[sel] = 0;
+                break;
+            }
 
             case this.OP_JAM:
                 this.rampPos[a & 0x01] = 0;
