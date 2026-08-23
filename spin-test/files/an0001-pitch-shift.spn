@@ -1,0 +1,43 @@
+; AN0001-3 pitch shifter, fixed rate - hardware vs simulator test
+;
+; Straight from Spin application note AN-0001, with the rate hard coded
+; instead of pot controlled so that hardware and simulator run identically.
+;
+; wldr 0,16384,4096 is documented in AN-0001 as "a shift up of one octave".
+; Feed a steady sine into the left input and measure the output pitch.
+;
+; POTS ARE NOT USED - the shift is fixed.
+
+delayl  mem 4096         ; Left delay
+delayr  mem 4096         ; Right delay
+temp    mem 1            ; Temp location for partial calculations
+
+        skp   run, START
+        wldr  0, 16384, 4096      ; +16384 = one octave up, 4096 sample range
+
+START:  ldax  ADCL
+        wra   delayl, 0
+        ldax  ADCR
+        wra   delayr, 0
+
+; ---- left channel, first read pointer, linearly interpolated
+        cho   rda, RMP0, REG|COMPC, delayl
+        cho   rda, RMP0, , delayl+1
+        wra   temp, 0
+; ---- left channel, second read pointer, half a ramp away
+        cho   rda, RMP0, RPTR2|COMPC, delayl
+        cho   rda, RMP0, RPTR2, delayl+1
+; ---- crossfade the two pointers
+        cho   sof, RMP0, NA|COMPC, 0
+        cho   rda, RMP0, NA, temp
+        wrax  DACL, 0
+
+; ---- right channel, same again
+        cho   rda, RMP0, REG|COMPC, delayr
+        cho   rda, RMP0, , delayr+1
+        wra   temp, 0
+        cho   rda, RMP0, RPTR2|COMPC, delayr
+        cho   rda, RMP0, RPTR2, delayr+1
+        cho   sof, RMP0, NA|COMPC, 0
+        cho   rda, RMP0, NA, temp
+        wrax  DACR, 0

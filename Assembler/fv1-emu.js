@@ -373,11 +373,17 @@ class FV1Core {
         this.delay[idx] = this.compress(value);
     }
 
-    // Fractionally interpolated read, for CHO RDA
-    readDelayInterp(addr, frac) {
-        const a = this.readDelay(addr);
-        const b = this.readDelay(addr + 1);
-        return Math.floor(a + (b - a) * frac);
+    // Crossfade coefficient supplied by a ramp LFO when the NA flag is set.
+    // AN-0001: "the cross fade coefficient is 0 when read pointer one is at
+    // the end of the delay and 1.0 when it is in the middle" - a triangle
+    // across the ramp, not the ramp itself.
+    xfadeCoef(sel) {
+        if (sel < 2) return 0;                  // NA is a ramp-only flag
+        const i = sel - 2;
+        const amp = this.rampAmpOf(i);
+        if (amp <= 0) return 0;
+        const norm = this.rampPos[i] / amp;     // 0..1 across the ramp
+        return 1 - Math.abs(2 * norm - 1);
     }
 
     // ---- the sample loop ------------------------------------------------
@@ -562,19 +568,34 @@ class FV1Core {
                 const arg = this.iD[pc];
 
                 if (type === 0x00) {
-                    // CHO RDA: interpolated delay read at LFO-modulated address
-                    const off = this.lfoOffset(sel, flags);
-                    const base = (arg & 0x7FFF) + Math.floor(off);
-                    let frac = off - Math.floor(off);
-                    if (flags & this.CHO_COMPC) frac = 1 - frac;
-                    const sample = this.readDelayInterp(base & this.DELAY_MASK, frac);
-                    this.acc = this.clamp24(this.acc + Math.floor(sample * frac));
+                    // CHO RDA reads a SINGLE delay sample and scales it by a
+                    // coefficient. The chip does not interpolate internally:
+                    // a program issues two of these, at addr and addr+1 with
+                    // COMPC on one of them, and the pair performs the linear
+                    // interpolation described in AN-0001.
+                    let addr, coef;
+                    if (flags & this.CHO_NA) {
+                        // Address used unmodified; the ramp supplies the
+                        // crossfade coefficient instead of an offset.
+                        addr = arg & 0x7FFF;
+                        coef = this.xfadeCoef(sel);
+                    } else {
+                        const off = this.lfoOffset(sel, flags);
+                        const base = Math.floor(off);
+                        addr = (arg & 0x7FFF) + base;
+                        coef = off - base;              // fractional bits
+                    }
+                    if (flags & this.CHO_COMPC) coef = 1 - coef;
+                    const sample = this.readDelay(addr & this.DELAY_MASK);
+                    this.acc = this.clamp24(this.acc + Math.floor(sample * coef));
                 } else if (type === 0x02) {
-                    // CHO SOF: ACC = ACC * lfo + D
-                    let lfo = this.lfoValue(sel, flags) / this.ONE;
-                    if (flags & this.CHO_COMPC) lfo = 1 - lfo;
+                    // CHO SOF: ACC = ACC * coefficient + D
+                    let coef = (flags & this.CHO_NA)
+                        ? this.xfadeCoef(sel)
+                        : this.lfoValue(sel, flags) / this.ONE;
+                    if (flags & this.CHO_COMPC) coef = 1 - coef;
                     this.acc = this.clamp24(
-                        Math.floor(this.acc * lfo) + this.sext(arg & 0x7FFF, 15) * 256);
+                        Math.floor(this.acc * coef) + this.sext(arg & 0x7FFF, 15) * 256);
                 } else if (type === 0x03) {
                     // CHO RDAL: read LFO value into ACC
                     this.acc = this.clamp24(this.lfoValue(sel, flags));
