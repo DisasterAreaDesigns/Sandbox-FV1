@@ -1549,6 +1549,23 @@ body.dark-mode .opcodes-notes {
     margin: 0;
 }
 
+/* A named pot needs more room than "POT0", so its label column is wider than
+   the fixed rows above it, and a long name clips with an ellipsis instead of
+   shoving the slider around. */
+.flyout-content .sim-pot-row {
+    grid-template-columns: 92px 1fr 46px;
+}
+
+.sim-slider-row label span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A pot the program has named reads as its own word, not a register. */
+.sim-renamed { font-weight: 600; }
+
 .sim-value {
     font-size: 0.82em;
     color: var(--flyout-text-muted, #666);

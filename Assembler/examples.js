@@ -9,7 +9,9 @@ ldax    adcr        ; read in right input
 wrax    dacr, 0.0   ; write to right output and clear`,
 
     delay: `; Simple Delay Effect
-; POT0: delay mix, POT1: delay time, POT2: delay repeats
+; #POT0 Mix
+; #POT1 Time
+; #POT2 Repeats
 
 mem     delay   24000
 
@@ -45,7 +47,9 @@ rdax    adcl, 1.0       ; add input
 wrax    dacl, 0.0       ; write both channels`,
 
     chorus: `; Simple Mono Chorus
-; POT0: chorus rate, POT1: chorus intensity, POT2: not used
+; #POT0 Rate
+; #POT1 Intensity
+; POT2: not used
 
 mem     chodel  2048
 
@@ -77,8 +81,10 @@ flanger: `flanger test`,
 
 reverb: `reverb test`,
 
-tremolo: `; Simple Mono Tremolo
-; POT0: tremolo rage, POT1: tremolo depth, POT2: not used
+tremolo: `; Simple Stereo Tremolo
+; #POT0 Rate
+; #POT1 Depth
+; POT2: not used
 
 equ temp reg0
 
@@ -105,6 +111,10 @@ wrax    temp, 0.0   ; save scaled LFO
 
 rdax    adcl, 1.0   ; get input
 mulx    temp        ; scale by LFO
+wrax    dacl, 0.0   ; write output
 
-wrax    dacl, 0.0   ; write output`,
+rdax    adcr, 1.0   ; get right input
+mulx    temp        ; scale this side
+wrax    dacr, 0.0
+`,
 };

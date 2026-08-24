@@ -889,24 +889,31 @@
             <div class="flyout-section">
                 <h4>Pots</h4>
                 <div class="options">
-                    <div class="sim-slider-row">
-                        <label for="simPot0">POT0</label>
+                    <div class="sim-slider-row sim-pot-row" title="POT0">
+                        <label for="simPot0"><span id="simPot0Label">POT0</span></label>
                         <input type="range" id="simPot0" min="0" max="100" value="50"
                                oninput="simSendPots()">
                         <span id="simPot0Value" class="sim-value">50%</span>
                     </div>
-                    <div class="sim-slider-row">
-                        <label for="simPot1">POT1</label>
+                    <div class="sim-slider-row sim-pot-row" title="POT1">
+                        <label for="simPot1"><span id="simPot1Label">POT1</span></label>
                         <input type="range" id="simPot1" min="0" max="100" value="50"
                                oninput="simSendPots()">
                         <span id="simPot1Value" class="sim-value">50%</span>
                     </div>
-                    <div class="sim-slider-row">
-                        <label for="simPot2">POT2</label>
+                    <div class="sim-slider-row sim-pot-row" title="POT2">
+                        <label for="simPot2"><span id="simPot2Label">POT2</span></label>
                         <input type="range" id="simPot2" min="0" max="100" value="50"
                                oninput="simSendPots()">
                         <span id="simPot2Value" class="sim-value">50%</span>
                     </div>
+                </div>
+                <div class="sim-note">
+                    <b>Naming pots.</b> Put a tag in a comment and the pot labels
+                    follow it as you type: <code>; #POT0 Delay time</code>,
+                    <code>; #POT1 Feedback</code>. Tags are read from the comment
+                    part of a line, so they never collide with code. Hover a
+                    renamed pot to see which one it is.
                 </div>
             </div>
 

@@ -470,6 +470,65 @@ function simToggleBypass() {
     else simReportRate();
 }
 
+// ---- control naming -------------------------------------------------------
+//
+// A program can name the simulator's pots with a magic comment:
+//
+//     ; #POT0 Delay time
+//     ; #POT1 Feedback
+//
+// The tag is read from the comment portion of a line, so it can never collide
+// with code, and the assembler ignores it because it is inside a comment. A pot
+// with no tag keeps its hardware name.
+
+function simParseControlNames(src) {
+    const names = {pot: new Array(3).fill(null)};
+    if (!src) return names;
+
+    for (const line of src.split(/\r?\n/)) {
+        // Take the text after the first comment marker on the line. A line with
+        // no marker is scanned whole, which picks up tags sitting inside a
+        // /* */ block.
+        const semi = line.indexOf(';');
+        const dbl = line.indexOf('//');
+        let cut = -1;
+        if (semi >= 0 && (dbl < 0 || semi < dbl)) cut = semi + 1;
+        else if (dbl >= 0) cut = dbl + 2;
+        const text = cut >= 0 ? line.slice(cut) : line;
+
+        const m = /#(POT[0-2])\b[ \t]*(.*)$/i.exec(text);
+        if (!m) continue;
+
+        // Stop the name at a further comment marker or a block-comment close,
+        // so `/* #POT0 Mix */` names the pot "Mix" rather than "Mix */".
+        const name = m[2].replace(/(;|\/\/|\*\/).*$/, '').trim();
+        if (!name) continue;
+        names.pot[+m[1].slice(3)] = name;
+    }
+    return names;
+}
+
+function simSetControlLabel(id, name, fallback) {
+    const el = document.getElementById(id + 'Label');
+    if (!el) return;
+    el.textContent = name || fallback;
+    el.classList.toggle('sim-renamed', !!name);
+    // Keep the hardware name reachable once a program has renamed a pot, so it
+    // is still obvious which one is being driven.
+    const host = el.closest ? el.closest('.sim-slider-row') : null;
+    if (host) host.title = name ? name + '  \u2014  ' + fallback : fallback;
+}
+
+// Re-read the names from the editor. Cheap, so it can run on every edit.
+function simRefreshControlNames() {
+    let src = '';
+    try {
+        if (typeof editor !== 'undefined' && editor && editor.getValue) src = editor.getValue();
+    } catch (e) { /* editor not up yet */ }
+    const names = simParseControlNames(src);
+    for (let i = 0; i < 3; i++) simSetControlLabel('simPot' + i, names.pot[i], 'POT' + i);
+}
+
 // ---- display --------------------------------------------------------------
 
 function simStatus(msg, kind) {
@@ -509,6 +568,7 @@ function simHookAssemble() {
     const original = window.assemble;
     const wrapped = function () {
         const result = original.apply(this, arguments);
+        simRefreshControlNames();
         if (typeof assembledData !== 'undefined' && assembledData) {
             simLoadProgram();
             const auto = document.getElementById('simAutoReload');
@@ -524,6 +584,7 @@ function simHookAssemble() {
 
 document.addEventListener('DOMContentLoaded', () => {
     simHookAssemble();
+    simRefreshControlNames();
     simSendPots();
     simOnSourceChange();
     simOnToneFreqChange();
@@ -536,4 +597,21 @@ document.addEventListener('DOMContentLoaded', () => {
         simStatus('Opened as a local file - if Play fails, serve this folder ' +
             'over http (see readme)', 'warn');
     }
+
+    // Follow the names as they are typed rather than waiting for an assemble.
+    // Monaco may not be up yet, so poll briefly for it.
+    let tries = 0;
+    const attach = setInterval(() => {
+        if (typeof editor !== 'undefined' && editor && editor.onDidChangeModelContent) {
+            clearInterval(attach);
+            let timer = null;
+            editor.onDidChangeModelContent(() => {
+                clearTimeout(timer);
+                timer = setTimeout(simRefreshControlNames, 300);
+            });
+            simRefreshControlNames();
+        } else if (++tries > 40) {
+            clearInterval(attach);
+        }
+    }, 250);
 });
