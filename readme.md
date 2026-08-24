@@ -20,6 +20,8 @@ Programming is accomplished using the aforementioned RP2040 board - we've used a
 
 We've also added an FV-1 simulator to the web app.  The assembled program runs through a software model of the chip at its native 32.768 kHz, so you can audition an algorithm on a test tone, an audio file, or live input before you ever program the hardware.  The three pot controls are on screen, and each successful build reloads into the simulator while it plays.  The simulator models accumulator saturation and the FV-1's companded delay memory, and its LFO rates and depths follow the equations in Spin's application note AN-0001.  Chorus interpolation is approximated, so always confirm a design on real hardware.
 
+The simulator can also be played from a MIDI controller plugged into your computer.  Press **Enable MIDI** in the simulator panel, allow the browser's MIDI prompt, and pick an input and channel.  `CC50`, `CC51` and `CC52` sweep POT0, POT1 and POT2, and `CC102` switches the effect, with `0-63` bypassed and `64-127` engaged.  MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse.  Note that the Sandbox pedal itself has no MIDI input - this drives the simulator only.
+
 So it's a web app and a pedal.  Hook 'em up and write some code!
 
 ## Running the Assembler Locally
@@ -31,13 +33,13 @@ python3 -m http.server 8000 --directory Assembler
 
 Then open <http://localhost:8000> in Chrome or Edge.  If you prefer Node, `npx serve Assembler` works the same way.
 
-Chrome or Edge are required for programming hardware and selecting folders, since Firefox and Safari do not implement the File System Access and Web Serial APIs.  The simulator itself works in any browser with AudioWorklet support.
+Chrome or Edge are required for programming hardware and selecting folders, since Firefox and Safari do not implement the File System Access and Web Serial APIs.  The simulator itself works in any browser with AudioWorklet support, and its MIDI control works in Chrome, Edge and Firefox - Safari has no Web MIDI.
 
 ## What's In This Repo?
 * **ASFV1 Source:**  copy of the Python source for asfv1
-* **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`)
+* **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`) with MIDI control (`fv1-midi.js`)
 * **Firmware**  CircuitPython code for the RP2040 Zero program module
-* **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler
+* **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler, plus `midi-test.js` for the simulator's MIDI control (`npm run test:midi`)
 * **Hardware**  Schematic and PCB files for Sandbox pedal hardware
 
 ## What Can I Do With All This?

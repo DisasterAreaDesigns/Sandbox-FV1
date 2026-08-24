@@ -339,10 +339,10 @@ async function simLoadAudioFile(fileInput) {
         simFileBytes = bytes;
         simFileBuffer = await simDecodeFile(bytes);
         simFileName = file.name;
+        // The file input already shows the name, so this only adds what it
+        // cannot: how long the file turned out to be once decoded.
         const label = document.getElementById('simFileLabel');
-        if (label) {
-            label.textContent = file.name + ' (' + simFileBuffer.duration.toFixed(1) + 's)';
-        }
+        if (label) label.textContent = simFileBuffer.duration.toFixed(1) + ' s';
         const sel = document.getElementById('simSource');
         if (sel) sel.value = 'file';
         simOnSourceChange();
@@ -433,18 +433,53 @@ function simNumber(id, fallback) {
     return isNaN(v) ? fallback : v;
 }
 
-function simSendPots() {
-    const values = [
-        simNumber('simPot0', 50) / 100,
-        simNumber('simPot1', 50) / 100,
-        simNumber('simPot2', 50) / 100
-    ];
-    for (let i = 0; i < 3; i++) {
-        const out = document.getElementById('simPot' + i + 'Value');
-        if (out) out.textContent = Math.round(values[i] * 100) + '%';
-    }
-    if (simNode) simNode.port.postMessage({type: 'pots', values: values});
+// The pot values the core is actually running, not what the sliders say. The
+// sliders are whole percent, so a MIDI CC -- 128 steps -- cannot be stored in
+// one without losing resolution. Keep the real value here and let the slider
+// be the coarse display of it.
+let simPots = [0.5, 0.5, 0.5];
+
+// Set one pot from any source. `opts.from` names the control that moved, so a
+// slider is not fought for the thumb while it is the thing being dragged.
+// `opts.defer` sends the value to the core but leaves the display for the
+// caller to refresh, which is how MIDI keeps audio responding at full rate
+// while its redraws are batched.
+function simSetPot(i, v01, opts) {
+    if (i < 0 || i > 2) return;
+    const v = Math.max(0, Math.min(1, v01));
+    if (simPots[i] === v) return;
+    simPots[i] = v;
+
+    simPushPots();
+    if (!opts || !opts.defer) simRefreshPotDisplay(i, opts && opts.from);
 }
+
+function simRefreshPotDisplay(i, from) {
+    if (from !== 'slider') {
+        const slider = document.getElementById('simPot' + i);
+        if (slider) slider.value = String(Math.round(simPots[i] * 100));
+    }
+    const out = document.getElementById('simPot' + i + 'Value');
+    if (out) out.textContent = Math.round(simPots[i] * 100) + '%';
+}
+
+function simPushPots() {
+    if (simNode) simNode.port.postMessage({type: 'pots', values: simPots.slice()});
+}
+
+// Slider handler: read all three back out of the DOM, which also covers the
+// initial call at startup. The display is refreshed either way, since the
+// percentage beside an untouched slider still has to be drawn once.
+function simSendPots() {
+    for (let i = 0; i < 3; i++) {
+        simSetPot(i, simNumber('simPot' + i, 50) / 100, {from: 'slider', defer: true});
+        simRefreshPotDisplay(i, 'slider');
+    }
+}
+
+// Read-only view of what the core is running, for tests and for MIDI to
+// compare against before it decides a message changed anything.
+window.simGetPots = () => simPots.slice();
 
 function simApplyLevels() {
     if (!simCtx) return;
@@ -457,9 +492,21 @@ function simApplyLevels() {
 
     const inGain = Math.pow(10, inDb / 20);
     const outGain = Math.pow(10, outDb / 20);
-    if (simInputGain) simInputGain.gain.value = simBypass ? 0 : inGain;
-    if (simDryGain) simDryGain.gain.value = simBypass ? inGain : 0;
-    if (simOutputGain) simOutputGain.gain.value = outGain;
+    simRampGain(simInputGain, simBypass ? 0 : inGain);
+    simRampGain(simDryGain, simBypass ? inGain : 0);
+    simRampGain(simOutputGain, outGain);
+}
+
+// Slew a gain rather than stepping it. Bypass switches the wet and dry paths
+// against each other, and under MIDI control that happens often enough that a
+// hard switch would click on every press.
+function simRampGain(node, value) {
+    if (!node) return;
+    if (!simCtx || typeof node.gain.setTargetAtTime !== 'function') {
+        node.gain.value = value;
+        return;
+    }
+    node.gain.setTargetAtTime(value, simCtx.currentTime, 0.005);
 }
 
 function simToggleBypass() {

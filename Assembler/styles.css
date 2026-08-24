@@ -808,7 +808,7 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
 #simPanel {
     position: fixed;
     top: 0;
-    right: -330px; /* Hidden by default */
+    right: -380px; /* Hidden by default */
     width: 300px;  /* Standard width for options/info */
     height: 100vh;
     background: var(--flyout-bg, #f8f9fa);
@@ -817,13 +817,17 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
     transition: right 0.3s ease;
     z-index: 1000;
     overflow-y: auto;
-    padding: 20px;
+    /* The toggle handles stay pinned to the window edge and sit on top of an
+       open panel, so the panel is widened by their width and that strip is
+       left empty. Anything at the right end of a row -- a slider's value, a
+       button -- would otherwise be covered by a handle. */
+    padding: 20px 54px 20px 20px;
 }
 
 #instructionsPanel {
     width: 600px;
     max-width: 80%;
-    right: -630px; /* hidden by default */
+    right: -680px; /* hidden by default */
 }
 
 .options-panel {
@@ -1606,3 +1610,135 @@ body.dark-mode .opcodes-notes {
     font-family: ui-monospace, Menlo, Consolas, monospace;
     font-size: 0.95em;
 }
+
+/* Compact simulator panel ------------------------------------------------
+   The panel carries seven sections of controls, and at the shared flyout
+   spacing that is around 1400px of scrolling on a laptop. The rules below
+   tighten the chrome -- section gaps, headings, card padding, control height
+   -- rather than the controls themselves, and are scoped to #simPanel so the
+   other flyouts keep the roomier spacing. */
+
+#simPanel .flyout-section {
+    margin-bottom: 8px;
+}
+
+#simPanel .flyout-section h4 {
+    font-size: 0.92em;
+    padding-bottom: 3px;
+    letter-spacing: 0.02em;
+}
+
+#simPanel .options {
+    margin: 4px 0;
+    padding: 6px 9px;
+    gap: 5px;
+}
+
+/* Full-height selects and buttons are the other half of the problem: seven of
+   them at 40px each. */
+#simPanel .flyout-content select,
+#simPanel .flyout-content button {
+    padding: 5px 10px;
+    font-size: 0.85em;
+}
+
+#simPanel .sim-play-btn {
+    padding: 6px 10px;
+}
+
+#simPanel .sim-transport {
+    margin-bottom: 6px;
+}
+
+#simPanel .sim-status {
+    margin-bottom: 4px;
+    min-height: 1.2em;
+}
+
+#simPanel .flyout-content .sim-slider-row {
+    margin-bottom: 5px;
+}
+
+#simPanel .flyout-content .sim-row {
+    margin-bottom: 0;
+    flex-wrap: nowrap;
+}
+
+/* The build state sits beside the button, so it must not wrap "Not loaded"
+   onto two lines and make the row taller than the button. */
+#simPanel .sim-program-state {
+    white-space: nowrap;
+}
+
+#simPanel .flyout-content .sim-slider-row {
+    margin-bottom: 4px;
+}
+
+#simPanel .options label {
+    line-height: 1.3;
+    margin-bottom: 3px;
+}
+
+#simPanel .flyout-content .midi-log-row {
+    margin: 5px 0;
+}
+
+/* MIDI control ---------------------------------------------------------- */
+
+/* A blink on every accepted message, so it is obvious whether a controller is
+   reaching the page at all before anyone starts doubting the mapping. */
+/* Activity dot, the message it belongs to, and the rescan button on one line.
+   The log takes the slack so the button stays put as messages change width. */
+.flyout-content .options > .midi-log-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.midi-log-row #midiLine {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0;
+    font-size: 0.78em;
+}
+
+/* Messages are data, so they get the monospace treatment; connection state is
+   prose and stays in the panel's own face. */
+.midi-log-row #midiLine.sim-status-log {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* Panel buttons are full-width by default, which is wrong for one that sits
+   at the end of a line. */
+.flyout-content .midi-log-row .midi-rescan {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 3px 8px;
+    font-size: 0.78em;
+    line-height: 1.4;
+}
+
+.midi-activity {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--flyout-button-bg, #e9ecef);
+    border: 1px solid var(--flyout-border, #dee2e6);
+    transition: background 0.12s linear;
+}
+
+.midi-activity.midi-activity-on {
+    background: var(--toggle-bg, #4CAF50);
+    border-color: var(--toggle-bg, #4CAF50);
+}
+
+/* Browsers without Web MIDI keep the section, so the feature is documented
+   rather than mysteriously absent, but it is visibly inert. */
+.sim-unavailable .options { opacity: 0.55; }

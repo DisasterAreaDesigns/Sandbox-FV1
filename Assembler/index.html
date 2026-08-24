@@ -651,6 +651,7 @@
         <script src="ui.js"></script>
         <script src="fv1-emu.js"></script>
         <script src="fv1-sim.js"></script>
+        <script src="fv1-midi.js"></script>
         <script src="user-preferences.js"></script>
     </div>
 
@@ -658,7 +659,7 @@
     <div class="options-toggle" onclick="toggleFlyout('options')">OPTIONS</div>
     <div class="info-toggle" onclick="toggleFlyout('info')">INFO</div>
     <div class="instructions-toggle" onclick="toggleFlyout('instructions')">HELP</div>
-    <div class="sim-toggle" onclick="toggleFlyout('sim')">SIM</div>
+    <div class="sim-toggle" onclick="toggleFlyout('sim')">TEST DRIVE</div>
 
     <!-- Options flyout panel -->
     <div id="optionsPanel" class="options-panel">
@@ -830,7 +831,7 @@
                     </div>
                     <label>
                         <input type="checkbox" id="simAutoReload" checked>
-                        Reload simulator on each assemble
+                        Reload on each assemble
                     </label>
                 </div>
             </div>
@@ -881,7 +882,7 @@
                     <div id="simFileRow" class="sim-row" style="display:none;">
                         <input type="file" id="simFileInput" accept="audio/*"
                                onchange="simLoadAudioFile(this)">
-                        <span id="simFileLabel" class="sim-value">No file chosen</span>
+                        <span id="simFileLabel" class="sim-value"></span>
                     </div>
                 </div>
             </div>
@@ -908,13 +909,6 @@
                         <span id="simPot2Value" class="sim-value">50%</span>
                     </div>
                 </div>
-                <div class="sim-note">
-                    <b>Naming pots.</b> Put a tag in a comment and the pot labels
-                    follow it as you type: <code>; #POT0 Delay time</code>,
-                    <code>; #POT1 Feedback</code>. Tags are read from the comment
-                    part of a line, so they never collide with code. Hover a
-                    renamed pot to see which one it is.
-                </div>
             </div>
 
             <div class="flyout-section">
@@ -939,23 +933,43 @@
                 </div>
             </div>
 
-            <div class="flyout-section">
-                <div class="sim-note">
-                    <p>The simulator runs your assembled program through a software
-                    FV-1 at the chip's native 32768 Hz, including 24-bit accumulator
-                    saturation and the 14-bit companded delay memory that gives the
-                    FV-1 its character.</p>
-                    <p>The <b>Crystal</b> setting clocks that software chip faster or
-                    slower, the same way swapping the crystal does on hardware. Your
-                    program is unchanged - it still runs 128 instructions per sample -
-                    but every delay and LFO sweep scales with the clock, and the fixed
-                    32768 words of delay memory buy you proportionally less time.
-                    Changing it rebuilds the audio engine, so delay memory is cleared.</p>
-                    <p>LFO rates and depths follow the equations in Spin's
-                    application note AN-0001. The fractional interpolation inside
-                    <code>CHO</code> is approximated, so chorus and flange will sound
-                    right but may not match hardware sample for sample. Always confirm
-                    on the pedal before shipping.</p>
+            <div class="flyout-section" id="midiSection">
+                <h4>MIDI Control</h4>
+                <div class="options">
+                    <label>
+                        Input:
+                        <select id="midiDevice" onchange="midiOnDeviceChange()" disabled>
+                            <option value="all">All inputs</option>
+                        </select>
+                    </label>
+                    <label>
+                        Channel:
+                        <select id="midiChannel" onchange="midiOnChannelChange()">
+                            <option value="0" selected>Omni (all channels)</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
+                            <option value="11">11</option>
+                            <option value="12">12</option>
+                            <option value="13">13</option>
+                            <option value="14">14</option>
+                            <option value="15">15</option>
+                            <option value="16">16</option>
+                        </select>
+                    </label>
+                    <div class="midi-log-row">
+                        <span id="midiActivity" class="midi-activity" title="MIDI activity"></span>
+                        <span id="midiLine" class="sim-status">Not connected</span>
+                        <button id="midiConnectBtn" class="midi-rescan"
+                                onclick="midiConnect()">Enable MIDI</button>
+                    </div>
                 </div>
             </div>
 
@@ -988,16 +1002,26 @@
                     <li><i>When satisfied with your source code, press the <b>Save Source...</b> button to download a local copy.</i></li>
                 </ul>
                 <h4>Simulator</h4>
-                <p>The <b>SIM</b> tab runs your assembled program through a software FV-1 so you can hear it without hardware.</p>
+                <p>The <b>TEST DRIVE</b> tab runs your assembled program through a software FV-1 so you can hear it without hardware.</p>
                 <ul>
-                    <li><i>Press <b>Assemble</b>, open the <b>SIM</b> tab, then press <b>Play</b>.</i></li>
+                    <li><i>Press <b>Assemble</b>, open the <b>TEST DRIVE</b> tab, then press <b>Play</b>.</i></li>
                     <li><i>Choose an <b>Input Source</b>: a test tone, white noise, an audio file from your computer, or live input from a microphone or interface. Audio files of any sample rate are resampled to the simulator's clock when loaded.</i></li>
                     <li><i>The <b>Crystal</b> setting under <b>Clock</b> runs the simulated chip anywhere from 8.192 kHz to 64 kHz, matching a crystal swap on hardware. The panel shows the resulting maximum delay time.</i></li>
-                    <li><i>The <b>POT0-POT2</b> sliders correspond to the three knobs on the Sandbox hardware.</i></li>
+                    <li><i>The <b>POT0-POT2</b> sliders correspond to the three knobs on the Sandbox hardware. A program can name them: put a tag in a comment, like <b>; #POT0 Delay time</b>, and the labels follow it as you type. Tags are read from the comment part of a line, so they never collide with code, and hovering a renamed pot still shows which one it is.</i></li>
                     <li><i>With <b>Reload simulator on each assemble</b> ticked, every successful build is loaded straight into the simulator, so you can edit and re-assemble while it plays.</i></li>
                     <li><i><b>Bypass</b> compares against the dry signal, and <b>Reset</b> clears the simulated delay memory.</i></li>
                 </ul>
                 <p>The simulator models the 24-bit accumulator saturation and the 14-bit companded delay memory that give the FV-1 its character. LFO rates and depths follow the equations in Spin's application note AN-0001. The fractional interpolation inside <b>CHO</b> is approximated, so chorus and flange sound correct but are not sample-identical to hardware. Confirm on the pedal before shipping a design.</p>
+                <p>Your program is unchanged by the <b>Crystal</b> setting - it still runs 128 instructions per sample - but every delay and LFO sweep scales with the clock, and the fixed 32768 words of delay memory buy you proportionally less time. Changing it rebuilds the audio engine, so the delay memory is cleared.</p>
+
+                <h4>MIDI Control</h4>
+                <p>The simulator can be played from a MIDI controller plugged into your computer. Press <b>Enable MIDI</b> in the <b>TEST DRIVE</b> tab, allow the browser's prompt, then choose an <b>Input</b> and <b>Channel</b>. The dot and the line beside the button show the last message that was accepted, which is the quickest way to tell whether a controller is reaching the page at all.</p>
+                <ul>
+                    <li><i><b>CC50</b>, <b>CC51</b> and <b>CC52</b> sweep POT0, POT1 and POT2.</i></li>
+                    <li><i><b>CC102</b> switches the effect: <b>0-63</b> bypasses, <b>64-127</b> engages.</i></li>
+                </ul>
+                <p>MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse. The chosen input and channel are remembered, and a controller unplugged and plugged back in is picked up again on its own.</p>
+                <p>Web MIDI needs Chrome, Edge or Firefox - Safari does not implement it. Note that the Sandbox pedal itself has no MIDI input; this drives the simulator only.</p>
 
                 <h4>Connecting to Hardware</h4>
                 <p><i>Connect your <b>Sandbox FV1</b> pedal to your computer using a suitable USB cable. A new removable drive labeled <b>SANDBOX-FV1</b> should appear.</i></p>
@@ -1099,29 +1123,20 @@
             }
         };
 
-        // Update the positions of the toggles to slide with panels
+        // An open panel takes its own handle with it, so the handle stays on the
+        // panel's edge like a tab. The other handles stay pinned to the window
+        // edge: every panel keeps an empty strip that wide down its right side,
+        // so they cover no control and all four stay reachable.
         window.updatePanelPositions = function() {
-            const optionsPanel = document.getElementById('optionsPanel');
-            const infoPanel = document.getElementById('infoPanel');
-            const instructionsPanel = document.getElementById('instructionsPanel');
-
-            const optionsToggle = document.querySelector('.options-toggle');
-            const infoToggle = document.querySelector('.info-toggle');
-            const instructionsToggle = document.querySelector('.instructions-toggle');
-
-            if (optionsPanel && optionsToggle)
-                optionsToggle.style.right = optionsPanel.classList.contains('open') ? '330px' : '0px';
-
-            if (infoPanel && infoToggle)
-                infoToggle.style.right = infoPanel.classList.contains('open') ? '330px' : '0px';
-
-            if (instructionsPanel && instructionsToggle)
-                instructionsToggle.style.right = instructionsPanel.classList.contains('open') ? '630px' : '0px';
-
-            const simPanel = document.getElementById('simPanel');
-            const simToggle = document.querySelector('.sim-toggle');
-            if (simPanel && simToggle)
-                simToggle.style.right = simPanel.classList.contains('open') ? '330px' : '0px';
+            ['options', 'info', 'instructions', 'sim'].forEach(type => {
+                const panel = document.getElementById(`${type}Panel`);
+                const toggle = document.querySelector(`.${type}-toggle`);
+                if (!panel || !toggle) return;
+                // Measured, not assumed: the instructions panel is capped at 80%
+                // of the window, so its width is not always its CSS width.
+                const open = panel.classList.contains('open');
+                toggle.style.right = open ? `${panel.offsetWidth}px` : '0px';
+            });
         };
 
         // Global keyboard shortcuts that work even when Monaco has focus
