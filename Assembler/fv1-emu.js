@@ -20,6 +20,12 @@
 // Fidelity notes:
 //   - ACC saturation, coefficient quantisation and delay RAM companding are
 //     modelled exactly. These are what give the FV-1 its character.
+//   - PACC is latched by every instruction that writes ACC, with the value ACC
+//     held on entry, and becomes visible to the following instruction. Spin's
+//     architecture overview calls it "the previous instruction's value", and
+//     the RDFX -> WRLX / WRHX shelving idiom depends on it: RDFX puts the
+//     filter input into PACC for the second instruction to work against.
+//     SKP ZRC compares ACC against it to detect a zero crossing.
 //   - LFO rates and amplitudes follow the equations in Spin's application
 //     note AN-0001 (Basics of the LFOs in the FV-1) and are checked against
 //     the worked examples in it, so sweep rates and depths match hardware.
@@ -407,8 +413,9 @@ class FV1Core {
             pc = this.step(pc);
         }
 
-        // End of sample period
-        this.pacc = this.acc;
+        // End of sample period. PACC is latched per instruction inside step()
+        // and nothing clocks it at the sample boundary, so it is left alone
+        // here; it carries the last latched value into the next pass.
         this.acc = 0;
         this.delayPtr = (this.delayPtr - 1) & this.DELAY_MASK;
         this.updateLFOs();
@@ -423,6 +430,13 @@ class FV1Core {
         const a = this.iA[pc];
         const b = this.iB[pc];
         const c = this.iC[pc];
+
+        // PACC holds the accumulator as it stood before the current
+        // instruction. Latching happens at the end of the instruction, so the
+        // value only becomes visible to the NEXT one -- which is what makes the
+        // shelving pair work: RDFX leaves the filter input in PACC for the
+        // following WRLX or WRHX to use. See the note above the class.
+        const entryAcc = this.acc;
 
         switch (op) {
             case this.OP_SOF:
@@ -610,6 +624,13 @@ class FV1Core {
 
             default:
                 break;
+        }
+
+        // Every instruction that writes ACC latches PACC. SKP returns from
+        // inside the switch above, and WLDS, WLDR and JAM only touch the LFO
+        // registers, so none of them disturb it.
+        if (op !== this.OP_WLDX && op !== this.OP_WLDR && op !== this.OP_JAM) {
+            this.pacc = entryAcc;
         }
 
         return pc + 1;
