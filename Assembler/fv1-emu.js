@@ -522,11 +522,18 @@ class FV1Core {
                 break;
 
             case this.OP_LOG: {
-                // ACC = C * log2(|ACC|)/16 + D  (D is S4.6)
+                // ACC = C * log2(|ACC|)/16 + D
+                //
+                // D is S.10, the same field SOF and EXP use, so it scales by
+                // 2^13. It is not S4.6: that reading spans +/-16 while the
+                // accumulator only holds +/-1, so 1921 of the 2048 codes would
+                // saturate on arrival. asfv1 encodes all three offsets with its
+                // S.10 parser and Spin's reference gives this constant as
+                // -1.0 to +0.999.
                 const mag = Math.abs(this.acc) / this.ONE;
                 const lg = mag > 0 ? Math.log2(mag) / 16 : -1;
                 const scaled = this.mulS1_14(Math.floor(lg * this.ONE), a);
-                this.acc = this.clamp24(scaled + this.sext(b, 11) * 131072);
+                this.acc = this.clamp24(scaled + this.sext(b, 11) * 8192);
                 break;
             }
 

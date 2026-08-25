@@ -10,12 +10,19 @@ const FV1Core = require('../Assembler/fv1-emu.js');
 
 const OP = {
     RDAX: 0x04, RDFX: 0x05, WRAX: 0x06, WRHX: 0x07, WRLX: 0x08,
-    MULX: 0x0A, SOF: 0x0D, SKP: 0x11, WLDX: 0x12, JAM: 0x13,
+    MULX: 0x0A, LOG: 0x0B, EXP: 0x0C, SOF: 0x0D, SKP: 0x11,
+    WLDX: 0x12, JAM: 0x13,
 };
 const REG = { ADCL: 0x14, ADCR: 0x15, DACL: 0x16, DACR: 0x17, REG0: 0x20, REG1: 0x21 };
 
 const word = (coef, reg, op) =>
     (((coef & 0xFFFF) << 16) | ((reg & 0x3F) << 5) | (op & 0x1F)) >>> 0;
+
+/** SOF, LOG and EXP: a 16-bit S1.14 multiplier and an 11-bit S.10 offset. */
+const wordOff = (coef, off, op) =>
+    (((coef & 0xFFFF) << 16) | ((off & 0x7FF) << 5) | (op & 0x1F)) >>> 0;
+
+const S_10 = (v) => Math.round(v * 1024) & 0x7FF;
 
 const S1_14 = (v) => Math.round(v * 16384) & 0xFFFF;
 
@@ -136,6 +143,38 @@ test('the accumulator is cleared at the start of each sample', () => {
     const core = load([word(0, REG.DACL, OP.WRAX)]);   // out = acc, with nothing read
     for (let i = 0; i < 4; i++) core.run(0.9, 0.9);
     assert.equal(core.getDACL(), 0);
+});
+
+test('SOF, LOG and EXP all take an S.10 offset', () => {
+    // Each program leaves the offset alone in the accumulator: the multiplier is
+    // zero, so the output is the offset by itself. All three must agree.
+    for (const [name, op, setup] of [
+        ['sof', OP.SOF, []],
+        ['log', OP.LOG, []],
+        ['exp', OP.EXP, []],
+    ]) {
+        for (const offset of [0.5, -0.5, 0.25]) {
+            const core = load([
+                ...setup,
+                wordOff(S1_14(0), S_10(offset), op),
+                word(0, REG.DACL, OP.WRAX),
+            ]);
+            for (let i = 0; i < 4; i++) core.run(0.5, 0.5);
+            assert.ok(Math.abs(core.getDACL() - offset) < 2e-3,
+                `${name} offset ${offset} came out as ${core.getDACL()}`);
+        }
+    }
+});
+
+test('a LOG offset is not scaled sixteen times too far', () => {
+    // The S4.6 reading would turn -0.5 into -8.0, which saturates to -1.0.
+    const core = load([
+        wordOff(S1_14(0), S_10(-0.5), OP.LOG),
+        word(0, REG.DACL, OP.WRAX),
+    ]);
+    for (let i = 0; i < 4; i++) core.run(0.5, 0.5);
+    assert.ok(core.getDACL() < -0.4 && core.getDACL() > -0.6,
+        `expected about -0.5, got ${core.getDACL()}`);
 });
 
 let failed = 0;
