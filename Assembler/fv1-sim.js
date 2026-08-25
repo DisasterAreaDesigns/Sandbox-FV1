@@ -44,7 +44,8 @@ function buildWorkletSource() {
         '        super();',
         '        this.core = new FV1Core();',
         '        this.pots = [0.5, 0.5, 0.5];',
-        '        this.peak = 0;',
+        '        this.peakL = 0;',
+        '        this.peakR = 0;',
         '        this.frames = 0;',
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
@@ -73,13 +74,16 @@ function buildWorkletSource() {
         '            const r = this.core.getDACR();',
         '            outL[i] = l;',
         '            if (outR) outR[i] = r;',
-        '            const m = Math.max(Math.abs(l), Math.abs(r));',
-        '            if (m > this.peak) this.peak = m;',
+        '            const al = Math.abs(l);',
+        '            const ar = Math.abs(r);',
+        '            if (al > this.peakL) this.peakL = al;',
+        '            if (ar > this.peakR) this.peakR = ar;',
         '        }',
         '        this.frames += outL.length;',
         '        if (this.frames >= 2048) {',
-        '            this.port.postMessage({type: "level", peak: this.peak});',
-        '            this.peak = 0;',
+        '            this.port.postMessage({type: "level", peak: [this.peakL, this.peakR]});',
+        '            this.peakL = 0;',
+        '            this.peakR = 0;',
         '            this.frames = 0;',
         '        }',
         '        return true;',
@@ -126,7 +130,7 @@ async function simInitEngine() {
     }
 
     node.port.onmessage = (e) => {
-        if (e.data.type === 'level') simUpdateMeter(e.data.peak);
+        if (e.data.type === 'level') simUpdateMeters(e.data.peak);
     };
 
     const inputGain = ctx.createGain();
@@ -175,8 +179,13 @@ async function simStart() {
 
         // Always push the program to the worklet here. simLoadedProgram may
         // have been captured by the assemble hook before the engine existed,
-        // in which case the worklet itself still has nothing loaded.
-        simLoadProgram();
+        // in which case the worklet itself still has nothing loaded. Nothing to
+        // load is a dead end -- simReportRate below would otherwise paint over
+        // the warning with a cheerful 'Running at'.
+        if (!simLoadProgram()) {
+            simStop();
+            return;
+        }
 
         await simConnectSource();
         simRunning = true;
@@ -197,14 +206,26 @@ function simStop() {
     if (simCtx) simCtx.suspend();
     simRunning = false;
     simUpdateTransport();
-    simUpdateMeter(0);
+    simUpdateMeters([0, 0]);
     simStatus('Stopped', '');
+}
+
+// Ctrl+P (Alt+P off the Mac) reaches this from anywhere in the app, including
+// with the editor focused. Starting from the keyboard also opens the panel:
+// every bit of feedback the simulator gives -- the meter, the status line,
+// whether Play even took -- lives in there, so audio starting behind a closed
+// panel would be a sound with no visible cause. Stopping leaves the panel as
+// it found it.
+function simShortcutTogglePlay() {
+    const starting = !simRunning;
+    simTogglePlay();
+    if (starting && typeof openFlyout === 'function') openFlyout('sim');
 }
 
 function simPanic() {
     simStop();
     if (simNode) simNode.port.postMessage({type: 'reset'});
-    simStatus('Engine reset - delay memory cleared', '');
+    simStatus('Core reset - delay memory cleared', '');
 }
 
 // ---- program loading ------------------------------------------------------
@@ -218,6 +239,7 @@ function simLoadProgram() {
     }
     if (!simLoadedProgram) {
         simStatus('Nothing assembled yet - press Assemble first', 'warn');
+        simSetProgramState('Not loaded', '');
         return false;
     }
     if (simNode) {
@@ -226,17 +248,55 @@ function simLoadProgram() {
             bytes: simLoadedProgram.buffer.slice(0)
         });
     }
-    const el = document.getElementById('simProgramState');
-    if (el) {
-        el.textContent = simNode
-            ? 'Loaded (' + simLoadedProgram.length + ' bytes)'
-            : 'Ready (' + simLoadedProgram.length + ' bytes) - press Play';
-        el.className = 'sim-program-state loaded';
-    }
+    simSetProgramState(simNode
+        ? 'Loaded (' + simLoadedProgram.length + ' bytes)'
+        : 'Ready (' + simLoadedProgram.length + ' bytes) - press Play', 'loaded');
     return true;
 }
 
+function simSetProgramState(text, cls) {
+    const el = document.getElementById('simProgramState');
+    if (el) {
+        el.textContent = text;
+        el.className = 'sim-program-state' + (cls ? ' ' + cls : '');
+    }
+}
+
 // ---- sources --------------------------------------------------------------
+
+// The click train. One second between clicks, and the click itself is a short
+// 2 kHz burst rather than a bare one-sample impulse. An impulse puts most of
+// its energy above where a laptop speaker can reproduce it, so it barely
+// registers, and its DC content walks the state of anything with a feedback
+// path. A 2 kHz burst is audible, sits below Nyquist even at the 8.192 kHz
+// crystal, and at 3 ms is still brief enough to read as an impulse against the
+// delay times these programs work in.
+const SIM_CLICK_PERIOD = 1.0;      // seconds between clicks
+const SIM_CLICK_FREQ = 2000;       // Hz
+const SIM_CLICK_CYCLES = 6;        // whole cycles per burst -- 3 ms at 2 kHz
+
+// A whole number of cycles, so the window closes on a zero crossing.
+function simClickLength(sampleRate) {
+    return Math.round(SIM_CLICK_CYCLES * sampleRate / SIM_CLICK_FREQ);
+}
+
+// Write one click into the head of `data` and leave the rest silent. Pure, so
+// the headless tests can check the shape without a Web Audio context.
+function simFillClick(data, sampleRate) {
+    const n = simClickLength(sampleRate);
+    const len = Math.min(data.length, n);
+    const w = 2 * Math.PI * SIM_CLICK_FREQ / sampleRate;
+    for (let i = 0; i < len; i++) {
+        // A Hann window over whole cycles both starts and ends at zero, so the
+        // loop point never puts a step in the signal, and it leaves the burst
+        // symmetric enough that the positive and negative half-cycles cancel
+        // instead of handing the program a DC offset to integrate.
+        const win = 0.5 * (1 - Math.cos(2 * Math.PI * i / n));
+        data[i] = Math.sin(w * i) * win;
+    }
+    for (let i = len; i < data.length; i++) data[i] = 0;
+    return data;
+}
 
 function simSourceType() {
     const el = document.getElementById('simSource');
@@ -254,6 +314,20 @@ async function simConnectSource() {
         osc.frequency.value = simNumber('simToneFreq', 440);
         osc.start();
         simSource = osc;
+    } else if (type === 'click') {
+        // A one-second buffer with a single click at the top of it, looped, so
+        // the clicks land exactly a second apart however the crystal is set.
+        // That makes it a stopwatch you can hear: a delay's repeats and a
+        // reverb tail can both be read straight off the gap between clicks
+        // without measuring anything.
+        const buf = simCtx.createBuffer(1, Math.round(simCtx.sampleRate * SIM_CLICK_PERIOD),
+            simCtx.sampleRate);
+        simFillClick(buf.getChannelData(0), simCtx.sampleRate);
+        const node = simCtx.createBufferSource();
+        node.buffer = buf;
+        node.loop = true;
+        node.start();
+        simSource = node;
     } else if (type === 'noise') {
         const len = Math.floor(simCtx.sampleRate * 2);
         const buf = simCtx.createBuffer(1, len, simCtx.sampleRate);
@@ -593,12 +667,14 @@ function simUpdateTransport() {
     }
 }
 
-function simUpdateMeter(peak) {
-    const bar = document.getElementById('simMeterBar');
-    if (!bar) return;
-    const pct = Math.min(100, peak * 100);
-    bar.style.width = pct.toFixed(1) + '%';
-    bar.classList.toggle('sim-meter-clip', peak >= 0.999);
+function simUpdateMeters(peak) {
+    for (let i = 0; i < 2; i++) {
+        const bar = document.getElementById('simMeter' + i);
+        if (!bar) continue;
+        const p = peak && peak[i] ? peak[i] : 0;
+        bar.style.width = Math.min(100, p * 100).toFixed(1) + '%';
+        bar.classList.toggle('sim-meter-clip', p >= 0.999);
+    }
 }
 
 // ---- wiring ---------------------------------------------------------------

@@ -1488,6 +1488,12 @@ body.dark-mode .opcodes-notes {
 
 /* =========================
    FV-1 Simulator Panel
+
+   Laid out the same way as the FXCore assembler's Test Drive panel, so the two
+   simulators read as one instrument: transport, status and program state at the
+   top, then output meters, clock, source, pots and levels. The FV-1 has three
+   pots where the FXCore has six plus a switch bank, so the rows here are given
+   a little more room -- same structure, larger controls.
    ========================= */
 .sim-transport {
     display: flex;
@@ -1495,69 +1501,61 @@ body.dark-mode .opcodes-notes {
     margin-bottom: 10px;
 }
 
-.flyout-content .sim-play-btn {
+.sim-play-btn,
+.sim-panic-btn {
     flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9em;
     font-weight: 600;
-    padding: 10px;
+    cursor: pointer;
+    background: var(--toggle-bg, #4CAF50);
+    color: #fff;
 }
 
-.flyout-content .sim-play-btn.sim-playing {
-    background: var(--toggle-bg, #4CAF50);
-    color: var(--toggle-text, #fff);
-    border-color: var(--toggle-bg, #4CAF50);
-}
+/* `body.dark-mode button` is (0,1,2) and beats a bare class, so these are
+   scoped under .flyout-content to keep the panel's own colour coding. */
+.flyout-content .sim-play-btn.sim-playing { background: #c62828; }
+.flyout-content .sim-panic-btn { background: #7f8c8d; }
 
 .sim-status {
     font-size: 0.85em;
-    color: var(--flyout-text-muted, #666);
+    padding: 6px 8px;
+    border-radius: 3px;
     min-height: 1.4em;
     margin-bottom: 8px;
+    background: rgba(127, 127, 127, 0.12);
+    color: var(--flyout-text-muted, #666);
 }
 
-.sim-status-ok { color: #2e7d32; }
-.sim-status-warn { color: #b26a00; }
+.sim-status-ok    { color: #2e7d32; }
+.sim-status-warn  { color: #b26a00; }
 .sim-status-error { color: #c62828; }
 
-.sim-meter {
-    height: 8px;
-    background: var(--flyout-button-bg, #e9ecef);
-    border: 1px solid var(--flyout-border, #dee2e6);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.sim-meter-bar {
-    height: 100%;
-    width: 0%;
-    background: var(--toggle-bg, #4CAF50);
-    transition: width 0.08s linear;
-}
-
-.sim-meter-bar.sim-meter-clip { background: #c62828; }
-
+.flyout-content .sim-row,
 .flyout-content .sim-slider-row {
-    display: grid;
-    grid-template-columns: 52px 1fr 52px;
+    display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
-}
-
-.sim-slider-row label {
+    margin: 6px 0;
     font-size: 0.9em;
-    color: var(--flyout-text, #333);
 }
 
-.sim-slider-row input[type="range"] {
-    width: 100%;
+.sim-row label,
+.sim-slider-row label {
+    flex: 0 0 88px;
+    white-space: nowrap;
+    overflow: hidden;
+    color: var(--flyout-text, #333);
     margin: 0;
 }
 
 /* A named pot needs more room than "POT0", so its label column is wider than
    the fixed rows above it, and a long name clips with an ellipsis instead of
    shoving the slider around. */
-.flyout-content .sim-pot-row {
-    grid-template-columns: 92px 1fr 46px;
+.sim-pot-row label {
+    flex-basis: 108px;
 }
 
 .sim-slider-row label span {
@@ -1570,53 +1568,100 @@ body.dark-mode .opcodes-notes {
 /* A pot the program has named reads as its own word, not a register. */
 .sim-renamed { font-weight: 600; }
 
+.sim-slider-row input[type="range"] { flex: 1; min-width: 0; margin: 0; }
+
+/* The readout is the widest it ever gets ("-40 dB", "8000 Hz", "100%"), so the
+   slider keeps one length instead of growing and shrinking under the thumb as
+   the number changes. */
+.sim-slider-row .sim-value { flex: 0 0 4.8em; text-align: right; }
+
+/* A select shares its row with an 88px label, and the shared .flyout-content
+   padding leaves so little room that the longer crystal names are clipped
+   behind the dropdown arrow. Tighten it to fit the panel. */
+.sim-row select {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 7px 4px 7px 8px;
+    font-size: 0.85em;
+}
+
+.sim-row input[type="file"] {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 0.8em;
+}
+
 .sim-value {
+    flex: 0 0 auto;
     font-size: 0.82em;
     color: var(--flyout-text-muted, #666);
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
-.flyout-content .sim-row {
+.sim-program-state { font-size: 0.82em; opacity: 0.8; }
+.sim-program-state.loaded { color: #2e7d32; opacity: 1; }
+.sim-program-state.error  { color: #c62828; opacity: 1; }
+
+.sim-meters { margin-bottom: 6px; }
+
+.sim-meter-row {
     display: flex;
-    flex-direction: row;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    flex-wrap: wrap;
+    gap: 6px;
+    margin: 5px 0;
+    font-size: 0.75em;
 }
 
-.flyout-content .sim-row > button {
+.sim-meter-row span { flex: 0 0 38px; opacity: 0.75; }
+
+.sim-meter {
+    flex: 1;
+    height: 9px;
+    border-radius: 4px;
+    background: var(--flyout-button-bg, #e9ecef);
+    border: 1px solid var(--flyout-border, #dee2e6);
+    overflow: hidden;
+}
+
+.sim-meter-bar {
+    height: 100%;
+    width: 0;
+    background: var(--toggle-bg, #4CAF50);
+    transition: width 0.05s linear;
+}
+
+.sim-meter-bar.sim-meter-clip { background: #c62828; }
+
+/* A checkbox row's label carries the meaning and the control itself is tiny,
+   so the label takes the width instead of the fixed 88px column the slider
+   rows use -- otherwise "Bypass (hear dry signal)" is clipped mid-word. */
+.sim-row-check label {
     flex: 1 1 auto;
-    margin: 0;
+    overflow: visible;
+    white-space: normal;
 }
 
-.sim-program-state {
-    font-size: 0.82em;
-    color: var(--flyout-text-muted, #666);
+.sim-row-check input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin-left: auto;
 }
 
-.sim-program-state.loaded { color: #2e7d32; }
-
-.sim-note {
-    font-size: 0.8em;
-    color: var(--flyout-text-muted, #666);
-    line-height: 1.5;
-}
-
-.sim-note p { margin: 0 0 8px 0; }
-
-.sim-note code {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.95em;
+/* The panel is taller than any window, so it is always read scrolled. Its own
+   20px of padding is the last thing above the window edge, which leaves the
+   final row looking cut off; give the end of the scroll some room. */
+#simPanel .flyout-content {
+    padding-bottom: 28px;
 }
 
 /* Compact simulator panel ------------------------------------------------
    The panel carries seven sections of controls, and at the shared flyout
    spacing that is around 1400px of scrolling on a laptop. The rules below
-   tighten the chrome -- section gaps, headings, card padding, control height
-   -- rather than the controls themselves, and are scoped to #simPanel so the
-   other flyouts keep the roomier spacing. */
+   tighten the chrome -- section gaps, headings, control height -- rather than
+   the controls themselves, and are scoped to #simPanel so the other flyouts
+   keep the roomier spacing. The FXCore panel goes further because it has twice
+   the pots and a switch bank to fit; with three pots there is room to leave the
+   controls here a size up. */
 
 #simPanel .flyout-section {
     margin-bottom: 8px;
@@ -1628,22 +1673,17 @@ body.dark-mode .opcodes-notes {
     letter-spacing: 0.02em;
 }
 
-#simPanel .options {
-    margin: 4px 0;
-    padding: 6px 9px;
-    gap: 5px;
-}
-
-/* Full-height selects and buttons are the other half of the problem: seven of
+/* Full-height selects and buttons are the other half of the problem: eight of
    them at 40px each. */
 #simPanel .flyout-content select,
 #simPanel .flyout-content button {
-    padding: 5px 10px;
+    padding: 7px 10px;
     font-size: 0.85em;
 }
 
-#simPanel .sim-play-btn {
-    padding: 6px 10px;
+#simPanel .sim-play-btn,
+#simPanel .sim-panic-btn {
+    padding: 8px 10px;
 }
 
 #simPanel .sim-transport {
@@ -1655,46 +1695,31 @@ body.dark-mode .opcodes-notes {
     min-height: 1.2em;
 }
 
+#simPanel .flyout-content .sim-row,
 #simPanel .flyout-content .sim-slider-row {
-    margin-bottom: 5px;
+    margin: 4px 0;
 }
 
-#simPanel .flyout-content .sim-row {
-    margin-bottom: 0;
-    flex-wrap: nowrap;
-}
-
-/* The build state sits beside the button, so it must not wrap "Not loaded"
-   onto two lines and make the row taller than the button. */
+/* The build state sits beside its label, so it must not wrap "Not loaded" onto
+   two lines and make the row taller than the ones around it. */
 #simPanel .sim-program-state {
     white-space: nowrap;
 }
 
-#simPanel .flyout-content .sim-slider-row {
+#simPanel .sim-meters {
     margin-bottom: 4px;
-}
-
-#simPanel .options label {
-    line-height: 1.3;
-    margin-bottom: 3px;
-}
-
-#simPanel .flyout-content .midi-log-row {
-    margin: 5px 0;
 }
 
 /* MIDI control ---------------------------------------------------------- */
 
-/* A blink on every accepted message, so it is obvious whether a controller is
-   reaching the page at all before anyone starts doubting the mapping. */
 /* Activity dot, the message it belongs to, and the rescan button on one line.
    The log takes the slack so the button stays put as messages change width. */
-.flyout-content .options > .midi-log-row {
+#simPanel .midi-log-row {
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 8px;
-    margin: 8px 0;
+    margin: 5px 0;
 }
 
 .midi-log-row #midiLine {
@@ -1724,6 +1749,8 @@ body.dark-mode .opcodes-notes {
     line-height: 1.4;
 }
 
+/* A blink on every accepted message, so it is obvious whether a controller is
+   reaching the page at all before anyone starts doubting the mapping. */
 .midi-activity {
     width: 10px;
     height: 10px;
@@ -1741,4 +1768,5 @@ body.dark-mode .opcodes-notes {
 
 /* Browsers without Web MIDI keep the section, so the feature is documented
    rather than mysteriously absent, but it is visibly inert. */
-.sim-unavailable .options { opacity: 0.55; }
+.sim-unavailable .sim-row,
+.sim-unavailable .midi-log-row { opacity: 0.55; }
