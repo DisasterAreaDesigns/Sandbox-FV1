@@ -911,7 +911,12 @@ class FV1Assembler {
             case 'LOG': {
                 const mult = this.parseS1_14(mnemonic);
                 this.accept('OPERATOR', 'Expected comma');
-                const offset = this.parseS4_6(mnemonic);
+                // S.10, the same field SOF and EXP use -- not S4.6. That reading
+                // spans +/-16 while the accumulator only holds +/-1, so 1921 of
+                // the 2048 codes would saturate on arrival. asfv1 encodes all
+                // three offsets with its S.10 parser and Spin's reference gives
+                // this constant as -1.0 to +0.999.
+                const offset = this.parseS_10(mnemonic);
                 this.pl.push({
                     cmd: [mnemonic, mult, offset],
                     addr: this.icnt
