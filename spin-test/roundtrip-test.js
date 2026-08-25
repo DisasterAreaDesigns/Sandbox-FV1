@@ -110,20 +110,48 @@ test('a delay line delays by the length it was given', () => {
     assert.equal(impulseAt, 5, `impulse reappeared at ${impulseAt}, expected 5`);
 });
 
-test('a second delay block starts past the end of the first', () => {
-    // Blocks need room for a read and a write pointer, so the next base is the
-    // previous top plus one. Writing to one block must not disturb the other.
+test('one delay block does not overwrite the tail of the previous one', () => {
+    // `mem x N` spans base..base+N inclusive -- N+1 locations, one more than the
+    // declared length, so the block has room for a read and a write pointer.
+    // The next block therefore starts one past the top, not at it. Without that,
+    // x# and the next block's head are the same address.
+    //
+    // Here an impulse goes into block a while block b's head is written with a
+    // constant every sample. If the two blocks overlap, reading a# returns b's
+    // constant instead of the delayed impulse.
     const core = build([
         'mem a 4',
         'mem b 4',
         'rdax adcl, 1.0',
-        'wra a, 0',
-        'rda b#, 1.0',
+        'wra a, 0',            // the input at a's head
+        'sof 0, 0.5',
+        'wra b, 0',            // a constant at b's head
+        'rda a#, 1.0',         // read a's tail
         'wrax dacl, 0',
     ].join('\n'));
-    for (let n = 0; n < 20; n++) core.run(n === 0 ? 0.5 : 0, 0);
-    assert.ok(Math.abs(core.getDACL()) < 1e-3,
-        'reading block b should not see what was written to block a');
+
+    const seen = [];
+    for (let n = 0; n < 8; n++) {
+        core.run(n === 0 ? 0.5 : 0, 0);
+        seen.push(core.getDACL());
+    }
+    const impulseAt = seen.findIndex((v) => Math.abs(v - 0.5) < 2e-3);
+    assert.equal(impulseAt, 4,
+        `impulse reappeared at ${impulseAt}, expected 4; saw ${seen.map((v) => v.toFixed(3))}`);
+    for (const [n, v] of seen.entries()) {
+        if (n !== 4) assert.ok(Math.abs(v) < 2e-3, `sample ${n} should be silent, was ${v.toFixed(3)}`);
+    }
+});
+
+test('block symbols line up with asfv1', () => {
+    const asm = new FV1Assembler('mem a 4\nmem b 4\nclr\n', { clamp: true, spinReals: true });
+    asm.parse();
+    const at = (name) => asm.symtbl[name.toUpperCase()] ?? asm.symtbl[name];
+    assert.equal(at('a'), 0);
+    assert.equal(at('a#'), 4);
+    assert.equal(at('a^'), 2);
+    assert.equal(at('b'), 5, 'the next block starts one past the previous top');
+    assert.equal(at('b#'), 9);
 });
 
 // -------------------------------------------------------------------------

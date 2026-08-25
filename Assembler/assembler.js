@@ -1314,9 +1314,17 @@ class FV1Assembler {
             this.symtbl[baseName] = base;
             this.symtbl[baseName + '#'] = top;
             this.symtbl[baseName + '^'] = base + Math.floor(size / 2);
-            
-            // Fix: should be top, not top + 1
-            this.delaymem = top;
+
+            // The next block starts one past this one's top, not at it.
+            // `mem x N` spans base..base+N inclusive, which is N+1 locations --
+            // one more than the declared length so the block has room for both a
+            // read and a write pointer. FXCore's .mem documents the same rule
+            // explicitly, and asfv1 allocates the same way.
+            //
+            // Without the +1, `x#` and the next block's head are the same
+            // address, so writing the next block overwrites what this one's tail
+            // reads and the earlier delay line stops working.
+            this.delaymem = top + 1;
         } else { // EQU
             this.symtbl[baseName] = value;
         }
