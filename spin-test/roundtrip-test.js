@@ -155,6 +155,41 @@ test('block symbols line up with asfv1', () => {
 });
 
 // -------------------------------------------------------------------------
+// Coefficient rounding
+// -------------------------------------------------------------------------
+
+/** The raw coefficient field of the first instruction. */
+function firstCoefficient(source, shift, mask) {
+    const asm = new FV1Assembler(source, { clamp: true, spinReals: true });
+    asm.parse();
+    asm.generateMachineCode();
+    const b = asm.program;
+    return (((b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0) >>> shift) & mask;
+}
+
+test('coefficients round to nearest rather than truncating', () => {
+    // Truncating biases every fractional coefficient down by half an LSB on
+    // average. These are the values asfv1 produces.
+    const s1_9 = (src) => firstCoefficient(src, 21, 0x7FF);
+    const s1_14 = (src) => firstCoefficient(src, 16, 0xFFFF);
+
+    assert.equal(s1_9('rda 100, 0.55'), 282, '0.55 x 512 = 281.6');
+    assert.equal(s1_9('rda 100, 0.4'), 205, '0.4 x 512 = 204.8');
+    assert.equal(s1_9('rda 100, 0.6'), 307, '0.6 x 512 = 307.2');
+    assert.equal(s1_14('rdax adcl, 0.13'), 2130, '0.13 x 16384 = 2129.92');
+    assert.equal(s1_14('rdax adcl, -0.6'), 55706, 'negatives round too');
+});
+
+test('a tie rounds to even, as asfv1 does', () => {
+    // Python's round() breaks ties to even and Math.round breaks them away from
+    // zero, so these are the cases where the two would otherwise diverge.
+    const s1_9 = (src) => firstCoefficient(src, 21, 0x7FF);
+    assert.equal(s1_9('rda 100, 0.0009765625'), 0, 'exactly 0.5 of an LSB -> 0');
+    assert.equal(s1_9('rda 100, 0.0029296875'), 2, 'exactly 1.5 -> 2');
+    assert.equal(s1_9('rda 100, 0.0048828125'), 2, 'exactly 2.5 -> 2');
+});
+
+// -------------------------------------------------------------------------
 
 let failed = 0;
 for (const [name, fn] of tests) {
