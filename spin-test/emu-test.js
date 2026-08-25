@@ -177,6 +177,31 @@ test('a LOG offset is not scaled sixteen times too far', () => {
         `expected about -0.5, got ${core.getDACL()}`);
 });
 
+test('the ADC input rounds rather than truncating', () => {
+    // A pass-through, so the output is whatever the input converted to.
+    // Truncating biases every sample down by up to one LSB; rounding leaves the
+    // error centred, and half an LSB either way is the best achievable.
+    const core = load([
+        word(S1_14(1.0), REG.ADCL, OP.RDAX),
+        word(0, REG.DACL, OP.WRAX),
+    ]);
+    const LSB = 1 / 0x7FFFFF;
+    let sum = 0;
+    let worst = 0;
+    const samples = 400;
+    for (let n = 0; n < samples; n++) {
+        // values chosen to land between codes as often as possible
+        const input = -0.9 + (1.8 * n) / samples + 1e-7;
+        core.run(input, input);
+        const error = core.getDACL() - input;
+        sum += error;
+        worst = Math.max(worst, Math.abs(error));
+    }
+    assert.ok(worst <= LSB, `worst error ${(worst / LSB).toFixed(2)} LSB`);
+    const bias = Math.abs(sum / samples) / LSB;
+    assert.ok(bias < 0.1, `mean error ${bias.toFixed(3)} LSB: truncation biases, rounding should not`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
     try {

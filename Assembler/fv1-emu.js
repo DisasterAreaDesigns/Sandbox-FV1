@@ -404,8 +404,13 @@ class FV1Core {
     run(adcL, adcR) {
         if (!this.hasProgram) return;
 
-        this.regs[this.ADCL] = this.clamp24(Math.floor(adcL * this.ACC_MAX));
-        this.regs[this.ADCR] = this.clamp24(Math.floor(adcR * this.ACC_MAX));
+        // Round rather than truncate. This is a model boundary rather than chip
+        // behaviour -- a real ADC hands over an integer and there is no float to
+        // convert -- but flooring biases every input sample down by half an LSB,
+        // where rounding leaves the error centred on zero. It also makes this
+        // model agree bit for bit with an independent one.
+        this.regs[this.ADCL] = this.clamp24(Math.round(adcL * this.ACC_MAX));
+        this.regs[this.ADCR] = this.clamp24(Math.round(adcR * this.ACC_MAX));
 
         let pc = 0;
         let guard = 0;
