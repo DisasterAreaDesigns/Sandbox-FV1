@@ -20,6 +20,12 @@
 // Fidelity notes:
 //   - ACC saturation, coefficient quantisation and delay RAM companding are
 //     modelled exactly. These are what give the FV-1 its character.
+//   - PACC is latched by every instruction that writes ACC, with the value ACC
+//     held on entry, and becomes visible to the following instruction. Spin's
+//     architecture overview calls it "the previous instruction's value", and
+//     the RDFX -> WRLX / WRHX shelving idiom depends on it: RDFX puts the
+//     filter input into PACC for the second instruction to work against.
+//     SKP ZRC compares ACC against it to detect a zero crossing.
 //   - LFO rates and amplitudes follow the equations in Spin's application
 //     note AN-0001 (Basics of the LFOs in the FV-1) and are checked against
 //     the worked examples in it, so sweep rates and depths match hardware.
@@ -429,8 +435,13 @@ class FV1Core {
     run(adcL, adcR) {
         if (!this.hasProgram) return;
 
-        this.regs[this.ADCL] = this.clamp24(Math.floor(adcL * this.ACC_MAX));
-        this.regs[this.ADCR] = this.clamp24(Math.floor(adcR * this.ACC_MAX));
+        // Round rather than truncate. This is a model boundary rather than chip
+        // behaviour -- a real ADC hands over an integer and there is no float to
+        // convert -- but flooring biases every input sample down by half an LSB,
+        // where rounding leaves the error centred on zero. It also makes this
+        // model agree bit for bit with an independent one.
+        this.regs[this.ADCL] = this.clamp24(Math.round(adcL * this.ACC_MAX));
+        this.regs[this.ADCR] = this.clamp24(Math.round(adcR * this.ACC_MAX));
 
         let pc = 0;
         let guard = 0;
@@ -438,8 +449,9 @@ class FV1Core {
             pc = this.step(pc);
         }
 
-        // End of sample period
-        this.pacc = this.acc;
+        // End of sample period. PACC is latched per instruction inside step()
+        // and nothing clocks it at the sample boundary, so it is left alone
+        // here; it carries the last latched value into the next pass.
         this.acc = 0;
         this.delayPtr = (this.delayPtr - 1) & this.DELAY_MASK;
         this.updateLFOs();
@@ -473,6 +485,13 @@ class FV1Core {
         const a = this.iA[pc];
         const b = this.iB[pc];
         const c = this.iC[pc];
+
+        // PACC holds the accumulator as it stood before the current
+        // instruction. Latching happens at the end of the instruction, so the
+        // value only becomes visible to the NEXT one -- which is what makes the
+        // shelving pair work: RDFX leaves the filter input in PACC for the
+        // following WRLX or WRHX to use. See the note above the class.
+        const entryAcc = this.acc;
 
         switch (op) {
             case this.OP_SOF:
@@ -566,11 +585,18 @@ class FV1Core {
                 break;
 
             case this.OP_LOG: {
-                // ACC = C * log2(|ACC|)/16 + D  (D is S4.6)
+                // ACC = C * log2(|ACC|)/16 + D
+                //
+                // D is S.10, the same field SOF and EXP use, so it scales by
+                // 2^13. It is not S4.6: that reading spans +/-16 while the
+                // accumulator only holds +/-1, so 1921 of the 2048 codes would
+                // saturate on arrival. asfv1 encodes all three offsets with its
+                // S.10 parser and Spin's reference gives this constant as
+                // -1.0 to +0.999.
                 const mag = Math.abs(this.acc) / this.ONE;
                 const lg = mag > 0 ? Math.log2(mag) / 16 : -1;
                 const scaled = this.mulS1_14(Math.floor(lg * this.ONE), a);
-                this.acc = this.clamp24(scaled + this.sext(b, 11) * 131072);
+                this.acc = this.clamp24(scaled + this.sext(b, 11) * 8192);
                 break;
             }
 
@@ -671,6 +697,13 @@ class FV1Core {
 
             default:
                 break;
+        }
+
+        // Every instruction that writes ACC latches PACC. SKP returns from
+        // inside the switch above, and WLDS, WLDR and JAM only touch the LFO
+        // registers, so none of them disturb it.
+        if (op !== this.OP_WLDX && op !== this.OP_WLDR && op !== this.OP_JAM) {
+            this.pacc = entryAcc;
         }
 
         return pc + 1;
