@@ -71,7 +71,7 @@ async function run() {
     // 64/127 is not a whole percent: the core must get the CC value itself, not
     // the value the slider is able to display.
     check('CC50/51/52 set the pots at full 7-bit resolution',
-        await pots(), [1, 0, 64 / 127]);
+        await pots(), [1, 0, 64 / 127, 0.5, 0.5, 0.5]);
 
     await frame();
     check('sliders and readouts catch up on the next frame',
@@ -84,6 +84,32 @@ async function run() {
     check('the last message is logged',
         await page.evaluate(() => document.getElementById('midiLine').textContent),
         'CC52 → POT2 · 50%');
+
+    // POT3-POT5 exist only under #extended and have no sliders unless the
+    // loaded program declares it. Their CCs are mapped regardless, so a
+    // controller does not have to be re-learned for a different program.
+    await send(CH1, 53, 127);
+    await send(CH1, 54, 0);
+    await send(CH1, 55, 64);
+    check('CC53/54/55 set POT3-POT5, pragma or no pragma',
+        await pots(), [1, 0, 64 / 127, 1, 0, 64 / 127]);
+
+    await frame();
+    check('the extended pots reach their sliders too',
+        await page.evaluate(() => [3, 4, 5].map(i => [
+            document.getElementById('simPot' + i).value,
+            document.getElementById('simPot' + i + 'Value').textContent
+        ])),
+        [['100', '100%'], ['0', '0%'], ['50', '50%']]);
+
+    check('the last message names the pot it moved',
+        await page.evaluate(() => document.getElementById('midiLine').textContent),
+        'CC55 → POT5 · 50%');
+
+    // put them back so the checks below start from a known place
+    await send(CH1, 53, 64);
+    await send(CH1, 54, 64);
+    await send(CH1, 55, 64);
 
     console.log('\nBypass, CC102');
     await send(CH1, 102, 0);

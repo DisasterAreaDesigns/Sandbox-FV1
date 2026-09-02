@@ -8,7 +8,13 @@
 // The map is fixed, matching the Disaster Area control-change assignments:
 //
 //     CC50 -> POT0    CC51 -> POT1    CC52 -> POT2
+//     CC53 -> POT3    CC54 -> POT4    CC55 -> POT5
 //     CC102 -> bypass, 0-63 bypassed, 64-127 engaged
+//
+// POT3-POT5 exist only under #extended and have no sliders until a program
+// declares it. Their CCs are always mapped anyway: the pot values are live
+// either way, and a controller that has to be re-learned depending on which
+// program is loaded is worse than one that always sends to the same place.
 //
 // The pedal itself has no MIDI input. This is the simulator only.
 
@@ -16,6 +22,9 @@ const MIDI_MAP = {
     50: 'pot0',
     51: 'pot1',
     52: 'pot2',
+    53: 'pot3',
+    54: 'pot4',
+    55: 'pot5',
     102: 'bypass'
 };
 
@@ -32,7 +41,7 @@ let midiChannel = 0;           // 0 = omni, else 1-16
 // painting entirely while its audio keeps running -- but the redraws are
 // batched to one frame. A backgrounded tab therefore still responds to the
 // controller, and catches its display up when it is looked at again.
-let midiDirty = [false, false, false];
+let midiDirty = [false, false, false, false, false, false];
 let midiPendingText = null;
 let midiFrame = 0;
 let midiFlashTimer = null;
@@ -200,7 +209,7 @@ function midiHidden() {
 }
 
 function midiFlushDisplay() {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < midiDirty.length; i++) {
         if (!midiDirty[i]) continue;
         midiDirty[i] = false;
         if (typeof simRefreshPotDisplay === 'function') {

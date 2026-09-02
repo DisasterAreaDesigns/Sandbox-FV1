@@ -25,6 +25,7 @@ let simRunning = false;
 let simBypass = false;
 let simMeterTimer = null;
 let simLoadedProgram = null;
+let simLoadedExtended = false;   // did that build ask for #extended?
 
 // The FV-1's sample rate is its crystal frequency, so the selector is really
 // a crystal swap: a program's behaviour in samples never changes, but every
@@ -43,13 +44,14 @@ function buildWorkletSource() {
         '    constructor() {',
         '        super();',
         '        this.core = new FV1Core();',
-        '        this.pots = [0.5, 0.5, 0.5];',
+        '        this.pots = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5];',
         '        this.peak = 0;',
         '        this.frames = 0;',
+        '        this.ledSum = [0, 0];',
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
         '            if (d.type === "program") {',
-        '                this.core.setProgram(new Uint8Array(d.bytes));',
+        '                this.core.setProgram(new Uint8Array(d.bytes), d.extended);',
         '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
         '            } else if (d.type === "pots") {',
         '                this.pots = d.values;',
@@ -67,7 +69,7 @@ function buildWorkletSource() {
         '        const inL = hasIn ? input[0] : null;',
         '        const inR = hasIn && input.length > 1 ? input[1] : inL;',
         '        for (let i = 0; i < outL.length; i++) {',
-        '            this.core.setPots(this.pots[0], this.pots[1], this.pots[2]);',
+        '            this.core.setPots(this.pots);',
         '            this.core.run(inL ? inL[i] : 0, inR ? inR[i] : 0);',
         '            const l = this.core.getDACL();',
         '            const r = this.core.getDACR();',
@@ -75,11 +77,17 @@ function buildWorkletSource() {
         '            if (outR) outR[i] = r;',
         '            const m = Math.max(Math.abs(l), Math.abs(r));',
         '            if (m > this.peak) this.peak = m;',
+        '            this.ledSum[0] += this.core.getLED(0);',
+        '            this.ledSum[1] += this.core.getLED(1);',
         '        }',
         '        this.frames += outL.length;',
         '        if (this.frames >= 2048) {',
-        '            this.port.postMessage({type: "level", peak: this.peak});',
+        '            this.port.postMessage({type: "level", peak: this.peak,',
+        '                led: [this.ledSum[0] / this.frames,',
+        '                      this.ledSum[1] / this.frames]});',
         '            this.peak = 0;',
+        '            this.ledSum[0] = 0;',
+        '            this.ledSum[1] = 0;',
         '            this.frames = 0;',
         '        }',
         '        return true;',
@@ -126,7 +134,10 @@ async function simInitEngine() {
     }
 
     node.port.onmessage = (e) => {
-        if (e.data.type === 'level') simUpdateMeter(e.data.peak);
+        if (e.data.type === 'level') {
+            simUpdateMeter(e.data.peak);
+            simUpdateLEDs(e.data.led);
+        }
     };
 
     const inputGain = ctx.createGain();
@@ -198,6 +209,7 @@ function simStop() {
     simRunning = false;
     simUpdateTransport();
     simUpdateMeter(0);
+    simUpdateLEDs([0, 0]);
     simStatus('Stopped', '');
 }
 
@@ -215,6 +227,10 @@ function simPanic() {
 function simLoadProgram() {
     if (typeof assembledData !== 'undefined' && assembledData) {
         simLoadedProgram = new Uint8Array(assembledData);
+        // Read the pragma from the source that produced these bytes. Asking
+        // the editor later would describe whatever has been typed since, and
+        // a failed assemble leaves the last good program loaded.
+        simLoadedExtended = simSourceIsExtended();
     }
     if (!simLoadedProgram) {
         simStatus('Nothing assembled yet - press Assemble first', 'warn');
@@ -223,15 +239,27 @@ function simLoadProgram() {
     if (simNode) {
         simNode.port.postMessage({
             type: 'program',
-            bytes: simLoadedProgram.buffer.slice(0)
+            bytes: simLoadedProgram.buffer.slice(0),
+            extended: simLoadedExtended
         });
     }
+    // The assembler understands #extended before the core does. Say so on the
+    // program label, which nothing else overwrites, rather than let a 16 bit
+    // address quietly wrap at 32768 and sound like a bug in the program.
+    const ext = simLoadedExtended;
     const el = document.getElementById('simProgramState');
     if (el) {
-        el.textContent = simNode
+        el.textContent = (simNode
             ? 'Loaded (' + simLoadedProgram.length + ' bytes)'
-            : 'Ready (' + simLoadedProgram.length + ' bytes) - press Play';
-        el.className = 'sim-program-state loaded';
+            : 'Ready (' + simLoadedProgram.length + ' bytes) - press Play')
+            + (ext ? ' - #extended' : '');
+        el.className = 'sim-program-state loaded' + (ext ? ' warn' : '');
+        simApplyExtendedUI(ext);
+        el.title = ext
+            ? 'Extended instruction set: 65536 words of delay, RMPAX, and ' +
+              'POT3-POT5. The simulator runs all of it. This program will ' +
+              'not run on an FV-1.'
+            : '';
     }
     return true;
 }
@@ -415,12 +443,14 @@ function simRateLabel() {
     return (simRate / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kHz';
 }
 
-// The delay RAM is a fixed 32768 words, so its length in seconds -- and the
-// bandwidth -- both follow the crystal.
+// The delay RAM is a fixed number of words, so its length in seconds -- and
+// the bandwidth -- both follow the crystal. #extended doubles the word count,
+// which is the one thing here that is not a property of the clock.
 function simUpdateRateInfo() {
     const el = document.getElementById('simRateInfo');
     if (!el) return;
-    el.textContent = 'Max delay ' + (32768 / simRate).toFixed(2) + ' s, ' +
+    const words = simLoadedExtended ? 65536 : 32768;
+    el.textContent = 'Max delay ' + (words / simRate).toFixed(2) + ' s, ' +
         'Nyquist ' + (simRate / 2000).toFixed(1) + ' kHz';
 }
 
@@ -437,7 +467,14 @@ function simNumber(id, fallback) {
 // sliders are whole percent, so a MIDI CC -- 128 steps -- cannot be stored in
 // one without losing resolution. Keep the real value here and let the slider
 // be the coarse display of it.
-let simPots = [0.5, 0.5, 0.5];
+// Six. POT3-POT5 only exist under #extended, and their sliders are hidden
+// until a source declares the pragma, but the values are always live: a pot
+// that is out of sight keeps whatever it was last set to -- mid-scale until
+// something moves it -- so removing the pragma cannot change what a program
+// hears, and a MIDI controller does not go dead when the sliders do.
+const SIM_POT_COUNT = 6;
+const SIM_POT_FV1 = 3;
+let simPots = new Array(SIM_POT_COUNT).fill(0.5);
 
 // Set one pot from any source. `opts.from` names the control that moved, so a
 // slider is not fought for the thumb while it is the thing being dragged.
@@ -445,7 +482,7 @@ let simPots = [0.5, 0.5, 0.5];
 // caller to refresh, which is how MIDI keeps audio responding at full rate
 // while its redraws are batched.
 function simSetPot(i, v01, opts) {
-    if (i < 0 || i > 2) return;
+    if (i < 0 || i >= SIM_POT_COUNT) return;
     const v = Math.max(0, Math.min(1, v01));
     if (simPots[i] === v) return;
     simPots[i] = v;
@@ -471,7 +508,7 @@ function simPushPots() {
 // initial call at startup. The display is refreshed either way, since the
 // percentage beside an untouched slider still has to be drawn once.
 function simSendPots() {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < SIM_POT_COUNT; i++) {
         simSetPot(i, simNumber('simPot' + i, 50) / 100, {from: 'slider', defer: true});
         simRefreshPotDisplay(i, 'slider');
     }
@@ -523,13 +560,19 @@ function simToggleBypass() {
 //
 //     ; #POT0 Delay time
 //     ; #POT1 Feedback
+//     ; #LED1 Tempo
 //
 // The tag is read from the comment portion of a line, so it can never collide
 // with code, and the assembler ignores it because it is inside a comment. A pot
-// with no tag keeps its hardware name.
+// or lamp with no tag keeps its hardware name.
+//
+// The lamps are LED1 and LED2 rather than LED0 and LED1: the pots are numbered
+// after the registers they read, and the lamps are not -- REG30 and REG31 are
+// ordinary scratch that the FV-2040 happens to watch, so they are numbered the
+// way a front panel numbers them.
 
 function simParseControlNames(src) {
-    const names = {pot: new Array(3).fill(null)};
+    const names = {pot: new Array(SIM_POT_COUNT).fill(null), led: new Array(2).fill(null)};
     if (!src) return names;
 
     for (const line of src.split(/\r?\n/)) {
@@ -543,14 +586,16 @@ function simParseControlNames(src) {
         else if (dbl >= 0) cut = dbl + 2;
         const text = cut >= 0 ? line.slice(cut) : line;
 
-        const m = /#(POT[0-2])\b[ \t]*(.*)$/i.exec(text);
+        const m = /#(POT[0-5]|LED[12])\b[ \t]*(.*)$/i.exec(text);
         if (!m) continue;
 
         // Stop the name at a further comment marker or a block-comment close,
         // so `/* #POT0 Mix */` names the pot "Mix" rather than "Mix */".
         const name = m[2].replace(/(;|\/\/|\*\/).*$/, '').trim();
         if (!name) continue;
-        names.pot[+m[1].slice(3)] = name;
+        const tag = m[1].toUpperCase();
+        if (tag.startsWith('LED')) names.led[+tag.slice(3) - 1] = name;
+        else names.pot[+tag.slice(3)] = name;
     }
     return names;
 }
@@ -562,8 +607,33 @@ function simSetControlLabel(id, name, fallback) {
     el.classList.toggle('sim-renamed', !!name);
     // Keep the hardware name reachable once a program has renamed a pot, so it
     // is still obvious which one is being driven.
-    const host = el.closest ? el.closest('.sim-slider-row') : null;
+    const host = el.closest ? el.closest('.sim-slider-row, .sim-led-row') : null;
     if (host) host.title = name ? name + '  \u2014  ' + fallback : fallback;
+}
+
+// Show or hide everything that only exists under #extended: the header badge
+// and the POT3-POT5 sliders. This follows the LOADED build, not the editor.
+// Binding it to the text as it is typed would put a badge on the panel while
+// the running program is still an ordinary FV-1 build, and offer sliders for
+// pots that program cannot read.
+function simApplyExtendedUI(ext) {
+    const panel = document.getElementById('simPanel');
+    if (panel) panel.classList.toggle('sim-extended', !!ext);
+    // The tank doubles with the pragma, so the clock line changes too.
+    simUpdateRateInfo();
+}
+
+// Does the source in the editor ask for the extended instruction set? Read
+// through the assembler's own scanner, so there is one definition of what a
+// pragma is and the panel cannot drift away from what actually assembles.
+function simSourceIsExtended() {
+    try {
+        if (typeof FV1Assembler === 'undefined' || !FV1Assembler.scanPragmas) return false;
+        if (typeof editor === 'undefined' || !editor || !editor.getValue) return false;
+        return FV1Assembler.scanPragmas(editor.getValue()).extended;
+    } catch (e) {
+        return false;   // editor not up yet
+    }
 }
 
 // Re-read the names from the editor. Cheap, so it can run on every edit.
@@ -573,7 +643,10 @@ function simRefreshControlNames() {
         if (typeof editor !== 'undefined' && editor && editor.getValue) src = editor.getValue();
     } catch (e) { /* editor not up yet */ }
     const names = simParseControlNames(src);
-    for (let i = 0; i < 3; i++) simSetControlLabel('simPot' + i, names.pot[i], 'POT' + i);
+    for (let i = 0; i < SIM_POT_COUNT; i++)
+        simSetControlLabel('simPot' + i, names.pot[i], 'POT' + i);
+    for (let i = 0; i < 2; i++)
+        simSetControlLabel('simLed' + i, names.led[i], 'LED' + (i + 1));
 }
 
 // ---- display --------------------------------------------------------------
@@ -599,6 +672,24 @@ function simUpdateMeter(peak) {
     const pct = Math.min(100, peak * 100);
     bar.style.width = pct.toFixed(1) + '%';
     bar.classList.toggle('sim-meter-clip', peak >= 0.999);
+}
+
+// Two lamps, driven from REG30 and REG31 the way the FV-2040 drives its pair.
+// The brightness reaching here is the mean over an audio block rather than an
+// instant sample, which is what an eye does with a PWM lamp -- and it is why a
+// program blinking faster than the block rate reads as a dim lamp rather than
+// as a stroboscopic guess.
+function simUpdateLEDs(led) {
+    if (!led) return;
+    for (let i = 0; i < 2; i++) {
+        const el = document.getElementById('simLed' + i);
+        if (!el) continue;
+        const v = Math.max(0, Math.min(1, led[i] || 0));
+        el.style.setProperty('--led', v.toFixed(3));
+        el.classList.toggle('sim-led-on', v > 0.002);
+        const out = document.getElementById('simLed' + i + 'Value');
+        if (out) out.textContent = Math.round(v * 100) + '%';
+    }
 }
 
 // ---- wiring ---------------------------------------------------------------
@@ -652,11 +743,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof editor !== 'undefined' && editor && editor.onDidChangeModelContent) {
             clearInterval(attach);
             let timer = null;
+            // The slot label reads the source too, so it rides the same
+            // debounce: an Auto pick should follow "; #slot N" as it is typed.
+            const onIdle = () => {
+                simRefreshControlNames();
+                if (typeof refreshSlotLabel === 'function') refreshSlotLabel();
+            };
             editor.onDidChangeModelContent(() => {
                 clearTimeout(timer);
-                timer = setTimeout(simRefreshControlNames, 300);
+                timer = setTimeout(onIdle, 300);
             });
-            simRefreshControlNames();
+            onIdle();
         } else if (++tries > 40) {
             clearInterval(attach);
         }

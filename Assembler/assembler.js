@@ -8,6 +8,7 @@ class FV1Assembler {
         // Constants
         this.PROGLEN = 128;
         this.DELAYSIZE = 32767;
+        this.DELAYSIZE_EXT = 65535;     // #extended: 16 bit delay addressing
 
         // Fixed point constants
         this.REF_S1_14 = Math.pow(2, 14);
@@ -53,6 +54,13 @@ class FV1Assembler {
         this.opcodes = {
             'RDA': 0b00000,
             'RMPA': 0b00001,
+            // RMPAX shares RMPA's opcode and adds bit 5. It is in the table
+            // whether or not #extended is on, so the scanner reads it as a
+            // mnemonic and consumes its operand normally; parseInstruction
+            // refuses it when the pragma is off. Encoding it is unreachable
+            // from there, but the entry is the real one rather than a stub,
+            // so the two paths cannot disagree about what RMPAX means.
+            'RMPAX': 0b00001,
             'WRA': 0b00010,
             'WRAP': 0b00011,
             'RDAX': 0b00100,
@@ -81,6 +89,106 @@ class FV1Assembler {
             'CHO': 0b10100,
             'RAW': 0b00000
         };
+
+        // Extended instruction set state. These are the FV-1's own limits
+        // until a '#extended' line in the source moves them.
+        this.extended = false;
+        this.delaysize = this.DELAYSIZE;   // largest address MEM may allocate
+        this.addrmax = 0x7FFF;             // largest literal delay address
+        // Recognised even when the pragma is off, so that using one says why.
+        // POT3 would otherwise fail as 'Undefined symbol', which is true and
+        // tells you nothing; naming the cause is the whole job. The assembly
+        // still fails, exactly as it did.
+        this.EXT_ONLY_OPS = ['RMPAX'];
+        this.EXT_ONLY_REGS = ['POT3', 'POT4', 'POT5'];
+        this.applyPragmas();
+    }
+
+    // ---- assembler pragmas ----------------------------------------------
+    //
+    // A pragma is a line whose first non-blank character is '#'. There is no
+    // ambiguity to resolve: '#' appears in FV-1 source only as a MEM label
+    // modifier and never leads a line, so the scanner would reject one as
+    // unrecognised input anyway.
+    //
+    // Static and side-effect free, because the simulator and the hardware
+    // panel have to know what a source declares while it is being typed, long
+    // before anyone presses Assemble. Accepts a string or an array of lines
+    // and returns the blanked lines alongside what it found.
+    //
+    // This matches asfv1-extended, so a source carrying '#extended' assembles
+    // the same bytes here and through the command-line tool.
+    static scanPragmas(source) {
+        const lines = Array.isArray(source)
+            ? source.slice()
+            : String(source).split('\n');
+        const out = {extended: false, errors: [], lines: lines};
+
+        for (let i = 0; i < lines.length; i++) {
+            const body = lines[i].split(';')[0].trim();
+            if (!body.startsWith('#')) continue;
+
+            // Blanked rather than removed, so every line number in every later
+            // message is still the one in the file. A pragma may sit anywhere:
+            // what it changes is global to the assembly, and a rule about
+            // position would only be a rule to break.
+            lines[i] = '';
+
+            const word = body.slice(1).trim().toUpperCase();
+            if (word === 'EXTENDED') out.extended = true;
+            else if (word.startsWith('SLOT')) {
+                // #slot chooses a programming destination, not a language
+                // feature, and it is spelled as a comment so that asfv1 and
+                // asfv1-extended -- which reject unknown bare pragmas -- still
+                // assemble the file. Say that rather than 'Unknown pragma'.
+                out.errors.push({
+                    msg: `#slot is a comment tag, not a pragma - write it as ";${body.toLowerCase()}"`,
+                    line: i + 1
+                });
+            } else out.errors.push({msg: `Unknown pragma ${body}`, line: i + 1});
+        }
+        return out;
+    }
+
+    applyPragmas() {
+        const scan = FV1Assembler.scanPragmas(this.source);
+        this.source = scan.lines;
+        if (scan.extended) this.enableExtended();
+        for (const e of scan.errors) this.error(e.msg, e.line);
+    }
+
+    // Enable the extended instruction set for this source: 16 bit delay
+    // addressing, and in due course POT3-POT5 and RMPAX. Everything is
+    // additive, so a source without the pragma assembles through exactly the
+    // code it did before -- which is the only reason it is safe to widen a
+    // tool every existing program depends on.
+    enableExtended() {
+        if (this.extended) return;
+        this.extended = true;
+        this.delaysize = this.DELAYSIZE_EXT;
+        this.addrmax = 0xFFFF;
+        // Contiguous, and stopping short of 0x1f: a multiplexer gives eight
+        // channels, so 0x1c-0x1f is left for POT6-POT9 rather than taking the
+        // tidier-looking 0x13 next to POT2 and splitting the run the firmware
+        // has to write.
+        this.symtbl['POT3'] = 0x19;
+        this.symtbl['POT4'] = 0x1a;
+        this.symtbl['POT5'] = 0x1b;
+        if (typeof debugLog === 'function') {
+            debugLog('Extended instruction set enabled: 65536 words of delay ' +
+                'memory. This program will not run on an FV-1.', 'info');
+        }
+    }
+
+    // Say when the pragma is what stands between here and success, and only
+    // when it would actually help: for a value inside the extended range and
+    // outside the FV-1's. A plain typo gets the plain message, because a hint
+    // on every out-of-range number is noise, and noise is how real messages
+    // get skipped.
+    extendedHint(msg, val = null) {
+        if (this.extended) return '';
+        if (val !== null && !(val > 0x7FFF && val <= 0xFFFF)) return '';
+        return ` (#extended ${msg})`;
     }
 
     initSymbolTable() {
@@ -546,6 +654,10 @@ class FV1Assembler {
                 } else if (fullName.endsWith('^') && this.symtbl.hasOwnProperty(baseName + '^')) {
                     value = this.symtbl[baseName + '^'];
                 }
+            } else if (this.EXT_ONLY_REGS.includes(baseName) && !this.extended) {
+                this.error(`${baseName} requires #extended`, this.sline);
+                this.nextSymbol();
+                return 0;
             } else {
                 this.error(`Undefined symbol: ${this.sym.text}`, this.sline);
                 this.nextSymbol();
@@ -784,6 +896,9 @@ class FV1Assembler {
         return arg & 0x7FF;
     }
 
+    // The real-valued form stays pinned at REF_S_15, so `rda 0.5` still means
+    // address 16384 and not half of a bigger tank. Porting a source by adding
+    // the pragma must not move an address that was already there.
     parseDelayAddress(mnemonic = '') {
         let addr = this.parseExpression();
         
@@ -794,17 +909,18 @@ class FV1Assembler {
         } else {
             // This is an integer delay address, use as-is but validate range
             addr = Math.round(addr);
-            if (addr < -0x8000 || addr > 0x7FFF) {
+            if (addr < -0x8000 || addr > this.addrmax) {
                 if (this.clamp) {
-                    addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
+                    addr = Math.max(-0x8000, Math.min(this.addrmax, addr));
                     this.warn(`Address clamped to 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
+                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}` +
+                        this.extendedHint('reaches 16 bit addresses', addr), this.instLine);
                     addr = 0;
                 }
             }
         }
-        return addr & 0x7FFF;
+        return addr & this.addrmax;
     }
 
     parseOffset(mnemonic = '') {
@@ -865,6 +981,9 @@ class FV1Assembler {
         // range checked.
         this.instLine = this.sline;
         this.accept('MNEMONIC');
+        if (this.EXT_ONLY_OPS.includes(mnemonic) && !this.extended) {
+            this.error(`${mnemonic} requires #extended`, this.instLine);
+        }
 
         if (this.icnt >= this.PROGLEN) {
             this.error(`Max program length exceeded by ${mnemonic}`, this.sline);
@@ -961,10 +1080,21 @@ class FV1Assembler {
                 break;
             }
 
-            case 'RMPA': {
+            case 'RMPA':
+            case 'RMPAX': {
                 const mult = this.parseS1_9(mnemonic);
+                const scale = mnemonic === 'RMPAX' ? 1 : 0;
+                if (scale === 0 && this.extended) {
+                    // Not an error: RMPA still means what it has always meant.
+                    // But in a 64k tank it reaches only the low half, and
+                    // finding that out by hearing a delay stop halfway is
+                    // worse than being told.
+                    this.warn('RMPA reads ADDR_PTR as ACC[23:8] and reaches ' +
+                        'only the low 32k of an extended delay; RMPAX reads ' +
+                        'the whole tank', this.instLine);
+                }
                 this.pl.push({
-                    cmd: [mnemonic, mult],
+                    cmd: [mnemonic, mult, scale],
                     addr: this.icnt
                 });
                 this.icnt++;
@@ -1048,14 +1178,20 @@ class FV1Assembler {
                     this.accept('OPERATOR', 'Expected comma');
                     flags = this.parseChoFlags(lfo);
                     this.accept('OPERATOR', 'Expected comma');
-                    // Use parseDelayAddress instead of parseS_15 for proper expression handling
+                    // A whole delay address, so it follows the address width.
                     arg = this.parseDelayAddress(mnemonic);
                 } else if (choType === 0x02) { // CHO SOF
                     this.accept('OPERATOR', 'Expected comma');
                     flags = this.parseChoFlags(lfo);
                     this.accept('OPERATOR', 'Expected comma');
-                    // Use parseDelayAddress instead of parseS_15 for proper expression handling
-                    arg = this.parseDelayAddress(mnemonic);
+                    // CHO RDA and CHO SOF share one 16-bit field, but they do
+                    // not share a meaning: under RDA it is an unsigned address
+                    // and under SOF it is a signed S.15 offset. Reading the
+                    // offset through parseDelayAddress masked it to 15 bits and
+                    // threw the sign away, so every negative offset came out as
+                    // its complement -- and it would have followed the address
+                    // width under #extended, which is a second way to be wrong.
+                    arg = this.parseS_15(mnemonic);
                 } else if (choType === 0x03) { // CHO RDAL
                     if (this.sym.type === 'OPERATOR' && this.sym.text === ',') {
                         this.accept('OPERATOR');
@@ -1293,16 +1429,18 @@ class FV1Assembler {
 
         if (directive === 'MEM') {
             const size = Math.floor(value);
-            if (size < 0 || size > this.DELAYSIZE) {
-                this.error(`Invalid memory size ${size}`, this.sline);
+            if (size < 0 || size > this.delaysize) {
+                this.error(`Invalid memory size ${size}` +
+                    this.extendedHint('has 65536 words', size), this.sline);
                 return;
             }
 
             const base = this.delaymem;
             const top = base + size;
 
-            if (top > this.DELAYSIZE) {
-                this.error(`Delay memory exhausted: requested ${size} exceeds ${this.DELAYSIZE - this.delaymem} available`, this.sline);
+            if (top > this.delaysize) {
+                this.error(`Delay memory exhausted: requested ${size} exceeds ${this.delaysize - this.delaymem} available` +
+                    this.extendedHint('has 65536 words'), this.sline);
                 return;
             }
             
@@ -1509,14 +1647,25 @@ class FV1Assembler {
                     case 'RDA':
                     case 'WRA':
                     case 'WRAP':
-                        // 15-bit address at bits 5-19, 11-bit multiplier at bits 21-31
-                        machineCode |= (inst.cmd[1] & 0x7FFF) << 5;
+                        // Address at bits 5-19, 11-bit multiplier at bits 21-31.
+                        // Bit 20 sits between them and is defined by nothing --
+                        // not the datasheet, not asfv1's op_tbl, and no program
+                        // in the corpus sets it. Under #extended it carries
+                        // address bit 15, which keeps the encoding a strict
+                        // superset: a legacy binary decodes identically and
+                        // there is no mode flag for a loader to get wrong.
+                        machineCode |= (inst.cmd[1] & this.addrmax) << 5;
                         machineCode |= (inst.cmd[2] & 0x7FF) << 21;
                         break;
 
                     case 'RMPA':
-                        // 11-bit multiplier at bits 21-31
+                    case 'RMPAX':
+                        // 11-bit multiplier at bits 21-31. RMPA encodes
+                        // nothing else, leaving 20:5 free; bit 5 selects the
+                        // ADDR_PTR scale, so RMPAX is RMPA with one more bit
+                        // set and a legacy binary still decodes as RMPA.
                         machineCode |= (inst.cmd[1] & 0x7FF) << 21;
+                        machineCode |= (inst.cmd[2] & 0x01) << 5;
                         break;
 
                     case 'SKP':

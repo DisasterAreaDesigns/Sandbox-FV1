@@ -6,6 +6,97 @@ let projectDirectoryHandle = null;
 let selectedFilename = null;
 let serialPort = null;
 
+// ---- program slot ---------------------------------------------------------
+//
+// Which of the eight EEPROM slots a build is written to. Manual is a button in
+// the grid. Auto reads a `; #slot N` tag out of the source, so a program
+// carries its own destination and a project of several files can be flashed
+// one after another without touching the grid in between.
+//
+// The tag is a comment rather than a bare `#slot` line on purpose: asfv1 and
+// asfv1-extended both reject unknown bare pragmas, so a directive spelled that
+// way would break the source in the other assemblers people use. One semicolon
+// is a cheap price for staying portable.
+
+const SLOT_DEFAULT = '3.hex';   // what a board with no toggles fitted reads
+let slotPrefsLoaded = false;    // has the saved slot been restored yet?
+let slotMode = 'manual';        // 'manual' or 'auto'
+
+// Pull `#slot N` out of the comment part of each line, the same way the
+// simulator reads its `#POT0` labels.
+function parseSlotTag(src) {
+    const out = {slot: null, conflict: false, bad: null};
+    if (!src) return out;
+
+    for (const line of src.split(/\r?\n/)) {
+        const semi = line.indexOf(';');
+        const dbl = line.indexOf('//');
+        let cut = -1;
+        if (semi >= 0 && (dbl < 0 || semi < dbl)) cut = semi + 1;
+        else if (dbl >= 0) cut = dbl + 2;
+        const text = cut >= 0 ? line.slice(cut) : line;
+
+        const m = /#slot\b[ \t]*(\d+)/i.exec(text);
+        if (!m) continue;
+
+        const n = +m[1];
+        if (n < 0 || n > 7) { out.bad = m[1]; continue; }
+        if (out.slot === null) out.slot = n;
+        else if (out.slot !== n) out.conflict = true;
+    }
+    return out;
+}
+
+function slotSource() {
+    try {
+        if (typeof editor !== 'undefined' && editor && editor.getValue) {
+            return editor.getValue();
+        }
+    } catch (e) { /* editor not up yet */ }
+    return '';
+}
+
+// The filename a build would actually be written to, or null if nothing is
+// chosen. Everything that writes to hardware goes through here rather than
+// reading selectedFilename, so manual and auto cannot disagree.
+function resolveSlot() {
+    if (slotMode !== 'auto') return selectedFilename;
+    const tag = parseSlotTag(slotSource());
+    return tag.slot === null ? SLOT_DEFAULT : tag.slot + '.hex';
+}
+
+// Say which slot is selected and, in auto, where the answer came from. A
+// destination that is being decided for you has to be legible at a glance.
+function refreshSlotLabel() {
+    const el = document.getElementById('filenameLabel');
+    if (!el) return;
+
+    if (slotMode !== 'auto') {
+        const btn = document.querySelector('.filename-btn.selected');
+        el.textContent = btn ? btn.textContent : '(none selected)';
+        el.classList.remove('slot-warn');
+        el.title = '';
+        return;
+    }
+
+    const tag = parseSlotTag(slotSource());
+    const target = tag.slot === null ? SLOT_DEFAULT : tag.slot + '.hex';
+    let why = tag.slot === null ? 'no #slot tag' : '#slot';
+    if (tag.conflict) why = '#slot, first of several';
+    else if (tag.bad !== null && tag.slot === null) why = '#slot ' + tag.bad + ' out of range';
+
+    el.textContent = 'Auto \u2192 ' + target + ' (' + why + ')';
+    el.classList.toggle('slot-warn', tag.conflict || tag.bad !== null);
+    el.title = tag.bad !== null
+        ? 'Slots are 0 to 7. #slot ' + tag.bad + ' was ignored.'
+        : tag.conflict
+            ? 'The source has more than one #slot tag with different numbers. The first is used.'
+            : 'Add "; #slot 5" to the source to choose a slot from the program itself.';
+
+    updateDownloadButtonStates();
+    updateHardwareConnectionStatus();
+}
+
 
 async function selectOutputDirectory() {
     try {
@@ -46,8 +137,12 @@ function updateHardwareConnectionStatus() {
     let statusText = 'No directory selected';
     let statusColor = '#666';
 
-    const filenameWithoutExt = selectedFilename.slice(0, -4);
-    const targetText = `Program Slot ${filenameWithoutExt}`;
+    // resolveSlot() is null before anything is chosen. Reading .slice() off
+    // that threw and took the whole status line down with it.
+    const target = resolveSlot();
+    const targetText = target
+        ? `Program Slot ${target.slice(0, -4)}${slotMode === 'auto' ? ' (auto)' : ''}`
+        : 'No slot selected';
     const serialConnected = document.getElementById('serialPortDisplay').textContent.includes('Connected');
     // const serialConnected = isSerialConnected();
 
@@ -469,22 +564,29 @@ function selectFilename(btn) {
     // Mark the clicked one as selected
     btn.classList.add('selected');
 
-    // Store the selected filename
-    selectedFilename = btn.dataset.filename;
+    if (btn.dataset.filename === 'auto') {
+        // Keep the last manual pick underneath, so leaving auto returns to
+        // the slot that was chosen rather than to nothing.
+        slotMode = 'auto';
+    } else {
+        slotMode = 'manual';
+        selectedFilename = btn.dataset.filename;
+    }
 
-    // Update the visible label
-    document.getElementById('filenameLabel').textContent = btn.textContent;
-
-    // Update button states
+    refreshSlotLabel();
     updateDownloadButtonStates();
-    
-    // Update hardware connection status to show selected slot
     updateHardwareConnectionStatus();
+    // The page selects a default slot during load, before saved preferences
+    // have been read. Saving that would overwrite the remembered slot with
+    // the default on every visit, so hold off until the restore has run.
+    if (slotPrefsLoaded && typeof userPrefs !== 'undefined' && userPrefs.save) {
+        userPrefs.save();
+    }
 }
 
 function updateDownloadButtonStates() {
     const hasAssembly = assembledData !== null && document.getElementById('output').value.trim() !== '';
-    const hasFilename = selectedFilename !== null;
+    const hasFilename = resolveSlot() !== null;
     const hasDirectory = outputDirectoryHandle !== null;
     
     // Plain download buttons (always use system file picker or browser download)
@@ -721,7 +823,9 @@ function showMessage(msg, type) {
 async function downloadHex() {
     const hex = document.getElementById('output').value;
 
-    if (!selectedFilename) {
+    const filename = resolveSlot();
+
+    if (!filename) {
         debugLog('Please select a filename first.', 'errors');
         return;
     }
@@ -730,8 +834,6 @@ async function downloadHex() {
         debugLog('Please select an output directory first.', 'errors');
         return;
     }
-
-    const filename = selectedFilename;
 
     try {
         const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
@@ -749,7 +851,9 @@ async function downloadHex() {
 async function downloadHexToHardware() {
     const hex = document.getElementById('output').value;
 
-    if (!selectedFilename) {
+    const filename = resolveSlot();
+
+    if (!filename) {
         debugLog('Please select a filename first.', 'errors');
         return;
     }
@@ -758,8 +862,6 @@ async function downloadHexToHardware() {
         debugLog('Please select an output directory first.', 'errors');
         return;
     }
-
-    const filename = selectedFilename;
 
     try {
         const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {

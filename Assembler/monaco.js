@@ -59,7 +59,7 @@ require(['vs/editor/editor.main'], function() {
                 [/\b(equ|mem)\b/, 'keyword.declaration'],
 
                 // Instructions - organized by category
-                [/\b(rda|rmpa|wra|wrap)\b/, 'keyword'],
+                [/\b(rda|rmpax|rmpa|wra|wrap)\b/, 'keyword'],
                 [/\b(rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx)\b/, 'keyword'],
                 [/\b(log|exp|sof|and|or|xor|not|clr)\b/, 'keyword'],
                 [/\b(skp|jmp|nop)\b/, 'keyword'],
@@ -74,7 +74,10 @@ require(['vs/editor/editor.main'], function() {
                 [/\breg([0-9]|[12][0-9]|3[01])\b/, 'variable'],
                 [/\b(sin0_rate|sin0_range|sin1_rate|sin1_range)\b/, 'variable'],
                 [/\b(rmp0_rate|rmp0_range|rmp1_rate|rmp1_range)\b/, 'variable'],
-                [/\b(pot[0-2]|adcl|adcr|dacl|dacr|addr_ptr)\b/, 'variable'],
+                // pot3-pot5 exist only under #extended, but the tokenizer
+                // colours them like the rest: it reads shape, not meaning,
+                // and the assembler is what says they need the pragma.
+                [/\b(pot[0-5]|adcl|adcr|dacl|dacr|addr_ptr)\b/, 'variable'],
 
                 // Hex Numbers
                 [/\b0[xX][0-9A-Fa-f]+\b/, 'number.hex'],

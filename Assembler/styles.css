@@ -1570,6 +1570,50 @@ body.dark-mode .opcodes-notes {
 /* A pot the program has named reads as its own word, not a register. */
 .sim-renamed { font-weight: 600; }
 
+/* Indicator lamps ---------------------------------------------------------
+   Two of them, driven from REG30 and REG31 as on the FV-2040. --led carries
+   the brightness the program asked for and everything visible is derived from
+   it, so zero is genuinely dark rather than a dimmed-but-still-lit dot. The
+   scale is linear, matching the firmware: predictable beats pretty for a
+   control surface, and a program that wants a curve writes the curve. */
+.flyout-content .sim-led-row {
+    display: grid;
+    grid-template-columns: 16px 1fr 46px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.sim-led {
+    --led: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--flyout-button-bg, #e9ecef);
+    border: 1px solid var(--flyout-border, #dee2e6);
+    transition: background-color 0.06s linear, box-shadow 0.06s linear;
+}
+
+.sim-led.sim-led-on {
+    background: rgba(255, 86, 48, calc(0.15 + 0.85 * var(--led)));
+    border-color: rgba(255, 86, 48, calc(0.45 + 0.55 * var(--led)));
+    box-shadow: 0 0 calc(2px + 9px * var(--led))
+                rgba(255, 86, 48, calc(0.55 * var(--led)));
+}
+
+.sim-led-name {
+    font-size: 0.9em;
+    color: var(--flyout-text, #333);
+    min-width: 0;
+}
+
+.sim-led-name span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sim-value {
     font-size: 0.82em;
     color: var(--flyout-text-muted, #666);
@@ -1597,6 +1641,31 @@ body.dark-mode .opcodes-notes {
 }
 
 .sim-program-state.loaded { color: #2e7d32; }
+.sim-program-state.loaded.warn { color: #b26a00; }
+
+/* The extended instruction set is opt-in per source, so nothing about it is
+   visible until a program asks for it. The badge and the POT3-POT5 rows are
+   revealed together by .sim-extended on the panel, which follows the loaded
+   build rather than the editor text -- offering a slider for a pot the
+   running program cannot read is worse than offering none. */
+.sim-ext-badge {
+    display: none;
+    font-size: 0.72em;
+    font-weight: 600;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+    padding: 2px 7px;
+    border-radius: 10px;
+    color: #b26a00;
+    background: rgba(178, 106, 0, 0.12);
+    border: 1px solid rgba(178, 106, 0, 0.35);
+}
+
+#simPanel.sim-extended .sim-ext-badge { display: inline-block; }
+
+#simPanel .flyout-content .sim-pot-ext { display: none; }
+#simPanel.sim-extended .flyout-content .sim-slider-row.sim-pot-ext { display: grid; }
+#simPanel.sim-extended .flyout-content .sim-note.sim-pot-ext { display: block; }
 
 .sim-note {
     font-size: 0.8em;
@@ -1670,7 +1739,8 @@ body.dark-mode .opcodes-notes {
     white-space: nowrap;
 }
 
-#simPanel .flyout-content .sim-slider-row {
+#simPanel .flyout-content .sim-slider-row,
+#simPanel .flyout-content .sim-led-row {
     margin-bottom: 4px;
 }
 
@@ -1742,3 +1812,16 @@ body.dark-mode .opcodes-notes {
 /* Browsers without Web MIDI keep the section, so the feature is documented
    rather than mysteriously absent, but it is visibly inert. */
 .sim-unavailable .options { opacity: 0.55; }
+
+/* The auto slot button spans both columns: it is not one of the eight
+   toggle positions, it is a different way of choosing among them. */
+.button-grid .filename-btn-auto {
+    grid-column: 1 / -1;
+}
+
+/* An auto destination that came out wrong -- an out-of-range number, or two
+   tags disagreeing -- still resolves to something, so the label has to say
+   that it fell back rather than let a silent default look deliberate. */
+#filenameLabel.slot-warn {
+    color: #b26a00;
+}

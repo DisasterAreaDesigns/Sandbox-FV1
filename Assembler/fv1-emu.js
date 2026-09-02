@@ -36,8 +36,14 @@
 class FV1Core {
     constructor() {
         this.PROG_LEN = 128;
-        this.DELAY_LEN = 32768;
-        this.DELAY_MASK = 0x7FFF;
+        // The tank is always allocated at its widest. Only the mask moves
+        // with the instruction set, so switching a program from FV-1 to
+        // #extended never reallocates on the audio thread.
+        this.DELAY_LEN = 65536;
+        this.DELAY_MASK_FV1 = 0x7FFF;
+        this.DELAY_MASK_EXT = 0xFFFF;
+        this.DELAY_MASK = this.DELAY_MASK_FV1;
+        this.extended = false;
 
         this.ACC_MAX = 0x7FFFFF;
         this.ACC_MIN = -0x800000;
@@ -49,9 +55,18 @@ class FV1Core {
         this.RMP0_RATE = 0x04; this.RMP0_RANGE = 0x05;
         this.RMP1_RATE = 0x06; this.RMP1_RANGE = 0x07;
         this.POT0 = 0x10; this.POT1 = 0x11; this.POT2 = 0x12;
+        // POT3-POT5 exist only under #extended and are not contiguous with
+        // the first three: 0x13 sits next to POT2 but 0x19 leaves 0x1c-0x1f
+        // free for POT6-POT9, so the run the firmware writes stays whole.
+        this.POT_REGS = [0x10, 0x11, 0x12, 0x19, 0x1a, 0x1b];
+        this.POT_COUNT = this.POT_REGS.length;
         this.ADCL = 0x14; this.ADCR = 0x15;
         this.DACL = 0x16; this.DACR = 0x17;
         this.ADDR_PTR = 0x18;
+        // LED 1 and LED 2 read REG30 and REG31, the top two of the
+        // general-purpose file. Nothing on the chip reserves them; this
+        // follows the FV-2040, which drives two PWM lamps from the same pair.
+        this.REG30 = 0x3E; this.REG31 = 0x3F;
 
         // Opcodes, matching the table in assembler.js
         this.OP_RDA = 0x00; this.OP_RMPA = 0x01; this.OP_WRA = 0x02;
@@ -143,11 +158,19 @@ class FV1Core {
 
     // ---- program loading ----------------------------------------------
 
-    setProgram(bytes) {
+    // 'extended' comes from the build that produced these bytes, not from
+    // the bytes themselves: the extended encoding is a strict superset, so
+    // there is nothing in a binary to sniff. That is the point -- an FV-1
+    // program and an extended one are told apart by their source, and a
+    // legacy binary decodes identically either way.
+    setProgram(bytes, extended = false) {
         if (!bytes || bytes.length < 512) {
             this.hasProgram = false;
             return false;
         }
+        this.extended = !!extended;
+        this.DELAY_MASK = this.extended
+            ? this.DELAY_MASK_EXT : this.DELAY_MASK_FV1;
         for (let i = 0; i < this.PROG_LEN; i++) {
             const o = i * 4;
             // Big-endian, matching generateMachineCode()
@@ -172,11 +195,19 @@ class FV1Core {
             case this.OP_WRA:
             case this.OP_WRAP:
                 this.iA[i] = (word >>> 21) & 0x7FF;      // S1.9 coefficient
-                this.iB[i] = (word >>> 5) & 0x7FFF;      // delay address
+                // Bits 5-19 are address[14:0] and bit 20 is address[15], so
+                // the field is contiguous and one shift reads all sixteen.
+                // Masking with DELAY_MASK drops bit 20 without the pragma,
+                // which is exactly what the FV-1 does with it.
+                this.iB[i] = (word >>> 5) & this.DELAY_MASK;
                 break;
 
             case this.OP_RMPA:
                 this.iA[i] = (word >>> 21) & 0x7FF;
+                // Bit 5 is RMPAX: read ADDR_PTR as ACC[22:7] rather than
+                // ACC[23:8]. Undefined on the FV-1, so it is only honoured
+                // under #extended.
+                this.iC[i] = this.extended ? (word >>> 5) & 0x01 : 0;
                 break;
 
             case this.OP_RDAX:
@@ -259,18 +290,18 @@ class FV1Core {
         this.sinPhase = [0, 0];
         this.rampPos = [0, 0];
 
-        this.potSmooth = [0, 0, 0];
+        this.potSmooth = new Array(this.POT_COUNT).fill(0);
     }
 
     // Pot inputs are heavily filtered on the real chip; smooth them so that
     // moving a control does not produce zipper noise.
-    setPots(p0, p1, p2) {
-        const targets = [p0, p1, p2];
+    setPots(values) {
         const k = 0.002;
-        for (let i = 0; i < 3; i++) {
-            const target = Math.max(0, Math.min(1, targets[i]));
+        for (let i = 0; i < this.POT_COUNT; i++) {
+            const target = Math.max(0, Math.min(1, values[i] || 0));
             this.potSmooth[i] += (target - this.potSmooth[i]) * k;
-            this.regs[this.POT0 + i] = Math.floor(this.potSmooth[i] * this.ACC_MAX);
+            this.regs[this.POT_REGS[i]] =
+                Math.floor(this.potSmooth[i] * this.ACC_MAX);
         }
     }
 
@@ -418,6 +449,25 @@ class FV1Core {
     getDACL() { return this.regs[this.DACL] / this.ACC_MAX; }
     getDACR() { return this.regs[this.DACR] / this.ACC_MAX; }
 
+    // Lamp brightness, read the way the FV-2040 reads it: the register as
+    // S1.23, 0 off and 1.0 full.
+    //
+    // Negative is off rather than rectified. Rectifying would double the rate
+    // of anything bipolar and turn a sine into a triangle, silently, with no
+    // way for a program to ask for the other behaviour. Clipping at zero is at
+    // least predictable, and a program that wants the whole waveform folds it
+    // itself -- `cho rdal,sin0 / sof 0.5,0.5 / wrax REG30,1.0`.
+    //
+    // The scale is linear for the same reason. An eye is not linear and a
+    // gamma curve would look better on a first try, but then a program author
+    // cannot predict what a value does; shaping a curve is two instructions
+    // for a program that has a multiplier, so the simulator stays out of it.
+    getLED(i) {
+        const v = this.regs[i === 0 ? this.REG30 : this.REG31];
+        if (!(v > 0)) return 0;
+        return v > this.ACC_MAX ? 1 : v / this.ACC_MAX;
+    }
+
     step(pc) {
         const op = this.iOp[pc];
         const a = this.iA[pc];
@@ -490,7 +540,15 @@ class FV1Core {
                 break;
 
             case this.OP_RMPA: {
-                const addr = Math.floor(this.regs[this.ADDR_PTR] / 256) & this.DELAY_MASK;
+                // RMPA reads ACC[23:8]: sixteen bits whose top one is the
+                // accumulator's sign, so a positive pointer reaches only the
+                // low 32k of an extended tank. RMPAX reads ACC[22:7] instead
+                // -- sixteen address bits with the sign left out -- which is
+                // what makes the whole tank reachable in one sweep. It pays
+                // for that with a bit of interpolation fraction, the only
+                // place 24 bits can find one.
+                const addr = Math.floor(this.regs[this.ADDR_PTR] / (c ? 128 : 256))
+                    & this.DELAY_MASK;
                 this.acc = this.clamp24(this.acc + this.mulS1_9(this.readDelay(addr), a));
                 break;
             }
@@ -582,12 +640,12 @@ class FV1Core {
                     if (flags & this.CHO_NA) {
                         // Address used unmodified; the ramp supplies the
                         // crossfade coefficient instead of an offset.
-                        addr = arg & 0x7FFF;
+                        addr = arg & this.DELAY_MASK;
                         coef = this.xfadeCoef(sel);
                     } else {
                         const off = this.lfoOffset(sel, flags);
                         const base = Math.floor(off);
-                        addr = (arg & 0x7FFF) + base;
+                        addr = (arg & this.DELAY_MASK) + base;
                         coef = off - base;              // fractional bits
                     }
                     if (flags & this.CHO_COMPC) coef = 1 - coef;
@@ -599,8 +657,11 @@ class FV1Core {
                         ? this.xfadeCoef(sel)
                         : this.lfoValue(sel, flags) / this.ONE;
                     if (flags & this.CHO_COMPC) coef = 1 - coef;
+                    // The offset is S.15 carried in a 16-bit field, so the
+                    // sign bit is bit 15 and sign extension is at 16. Masking
+                    // to 15 first read +0.5 as -0.5 and -0.5 as zero.
                     this.acc = this.clamp24(
-                        Math.floor(this.acc * coef) + this.sext(arg & 0x7FFF, 15) * 256);
+                        Math.floor(this.acc * coef) + this.sext(arg & 0xFFFF, 16) * 256);
                 } else if (type === 0x03) {
                     // CHO RDAL: read LFO value into ACC
                     this.acc = this.clamp24(this.lfoValue(sel, flags));
