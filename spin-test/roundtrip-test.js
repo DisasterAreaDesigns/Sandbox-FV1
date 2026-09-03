@@ -447,6 +447,66 @@ test('#extended still widens a real delay address', () => {
 
 // -------------------------------------------------------------------------
 
+// -------------------------------------------------------------------------
+// Sine amplitude through the pair.
+//
+// The FV-2040 reference core's tests/ops/ext_lfo_sin.spn, and the same
+// program written against the two LFOs the FV-1 already had. A rate of zero
+// parks each phase at 0, so a COS read returns that LFO's range register
+// exactly, which is what pins the select bits down: a WLDS that landed on the
+// wrong LFO would leave the one being read at zero.
+// -------------------------------------------------------------------------
+
+test('a sine reads out at its range, not at full scale', () => {
+    const source = (a, b) => `
+        wlds    SIN${a}, 0, 32767
+        wlds    SIN${b}, 0, 16384
+        cho     rdal, SIN${a}, REG|COS
+        wrax    REG0, 0
+        cho     rdal, SIN${b}, REG|COS
+        rdax    REG0, -0.25
+        wrax    DACL, 0
+    `;
+    const core = build(source(1, 0));
+    core.run(0, 0);
+    // 0.5 - 0.25 * 1.0, so a full-scale read would give 0.75.
+    assert.ok(Math.abs(core.getDACL() - 0.25) < 1e-3,
+        `expected 0.25, got ${core.getDACL()}`);
+
+    const ext = buildExt('#extended\n' + source(3, 2));
+    ext.run(0, 0);
+    assert.ok(Math.abs(ext.getDACL() - 0.25) < 1e-3,
+        `SIN2/SIN3: expected 0.25, got ${ext.getDACL()}`);
+});
+
+test('a 16384 sine drives sof 1,0.5 over 0 to 1', () => {
+    // tremolo-shapes.spn's own idiom, and the reason the scale has to be the
+    // range: a half-scale sine offset by a half sweeps a tremolo cleanly from
+    // silence to unity. At +/-1 the same two instructions give -0.5 .. 1.5 --
+    // a third of the cycle flat against the rail and the rest of it phase
+    // inverted, which is not what the program says it does.
+    const core = build(`
+        skp     RUN, 1
+        wlds    SIN0, 60, 16384
+        cho     rdal, SIN0
+        sof     1, 0.5
+        wrax    DACL, 0
+    `);
+    let lo = 1, hi = -1, railed = 0;
+    const N = 8000;
+    for (let i = 0; i < N; i++) {
+        core.run(0, 0);
+        const y = core.getDACL();
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+        if (y >= 0.9999) railed++;
+    }
+    assert.ok(lo > -0.005, `the trough reached ${lo.toFixed(3)}, so the gain went negative`);
+    assert.ok(hi > 0.99, `the peak only reached ${hi.toFixed(3)}`);
+    assert.ok(railed / N < 0.1,
+        `${(100 * railed / N).toFixed(0)}% of the cycle sat on the rail`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
     try {

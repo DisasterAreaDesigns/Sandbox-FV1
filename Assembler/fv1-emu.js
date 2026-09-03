@@ -377,9 +377,20 @@ class FV1Core {
     // length, so the peak excursion either side of centre is Ka / 4 samples.
     // The app note's own example, wlds SIN0,5,16384, is documented as
     // "+/-4096 samples for a total delay requirement of 8193".
-    sinAmpOf(i) {
+    // The range register as the S.23 number a sine LFO swings between, which
+    // is Ka back in the accumulator's own units: 32767 reads as ~1.0, 16384
+    // as 0.5. Both readings of a sine come from this one value, the way the
+    // FV-2040 core takes both from a single ten-bit-fraction number, so the
+    // amplitude can never be applied to one and not the other.
+    sinRangeOf(i) {
         const ka = Math.floor(this.regs[this.SIN_RANGE_REGS[i]] / 256) & 0x7FFF;
-        return ka / 4;
+        return ka * 256;
+    }
+
+    sinAmpOf(i) {
+        // The delay-tap reading: the same range in delay samples, ten
+        // fractional bits below it, which is Ka / 4 exactly.
+        return this.sinRangeOf(i) / 1024;
     }
 
     rampAmpOf(i) {
@@ -442,13 +453,27 @@ class FV1Core {
         return pos;
     }
 
-    // Normalised LFO value in S.23, used by CHO RDAL / CHO SOF
+    // LFO value in S.23, used by CHO RDAL / CHO SOF. Neither kind is
+    // normalised to full scale: both read out scaled by their range register.
     lfoValue(sel, flags) {
         if (sel < this.LFO_RMP0) {
             const phase = (flags & this.CHO_COS)
                 ? this.sinPhase[sel] + Math.PI / 2
                 : this.sinPhase[sel];
-            return Math.floor(Math.sin(phase) * this.ACC_MAX);
+            // Scaled by the amplitude register, not returned at full scale.
+            // AN-0001's second example writes POT0 straight to SIN0_RANGE,
+            // reads the oscillator with `cho rdal,SIN0` and sends it to DACL,
+            // and describes POT0 as setting the amplitude of the wave on a
+            // scope; at full scale that pot would do nothing. The corpus says
+            // the same thing without being asked: every program here that
+            // reads a sine this way declares that LFO at 32767 and calls the
+            // result "+/-1", GA_DEMO_TREM declares 16383 and calls it
+            // "+/-0.5", and tremolo-shapes.spn takes a 16384 sine through
+            // `sof 1,0.5` for a 0..1 sweep and through `absa / sof -2,0.999`
+            // for a full-scale one -- both of which clip if this is +/-1.
+            // pp-basic-wonky.spn asks for "some small amount of wobble" from
+            // an amplitude of 15 and would get the whole delay line.
+            return Math.floor(Math.sin(phase) * this.sinRangeOf(sel));
         }
         // A ramp is not normalised to full scale. Its accumulator counts the
         // position in 1/1024 sample steps and CHO RDAL hands that raw count

@@ -275,6 +275,79 @@ test('an unguarded WLDS leaves the sine phase running', () => {
         `sine should be at its peak after a quarter cycle, got ${core.getDACL()}`);
 });
 
+// -------------------------------------------------------------------------
+// Sine amplitude.
+//
+// CHO RDAL does not read a sine at full scale: it reads it scaled by that
+// LFO's range register. AN-0001's second example is the authority -- it
+// writes POT0 straight to SIN0_RANGE, reads the oscillator with
+// `cho rdal,SIN0` and sends it to DACL, and describes POT0 as setting the
+// amplitude of the wave seen on a scope, which a full-scale read would make
+// impossible. The corpus agrees without being asked: every program in
+// spin-test/files that reads a sine this way declares that LFO at 32767 and
+// calls the result "+/-1", GA_DEMO_TREM declares 16383 and calls it "+/-0.5",
+// and tremolo-shapes.spn turns a 16384 sine into a 0..1 sweep with
+// `sof 1,0.5` -- which clips if the sine is +/-1.
+// -------------------------------------------------------------------------
+
+const F_COS = 0x01, F_REG = 0x02;       // CHO flags
+const SIN1 = 1;
+const SIN0_RANGE = 0x01, POT0 = 0x10;   // register file addresses
+
+test('CHO RDAL reads a sine scaled by its range register', () => {
+    // A rate of zero parks the phase at 0, so a COS read returns the range
+    // itself and nothing has to be timed. Half the range in, half out.
+    for (const [amp, want] of [[32767, 0.99997], [16384, 0.5], [8192, 0.25]]) {
+        const core = load([
+            wlds(0, 0, amp),
+            cho(CHO_RDAL, SIN0, F_REG | F_COS, 0),
+            word(0, REG.DACL, OP.WRAX),
+        ]);
+        core.run(0, 0);
+        assert.ok(Math.abs(core.getDACL() - want) < 1e-4,
+            `range ${amp}: expected ${want}, got ${core.getDACL()}`);
+    }
+});
+
+test('a sine range is applied once, not twice', () => {
+    // The delay-tap reading and the CHO RDAL reading are one number in two
+    // units -- delay samples, and delay samples with ten fractional bits below
+    // them -- so applying the range to each separately would square it. The
+    // FV-2040 core keeps a single value for both readings for that reason.
+    const core = load([
+        wlds(1, 40, 16384),
+        cho(CHO_RDAL, SIN1, F_REG, 0),
+    ]);
+    for (let i = 0; i < 25; i++) {
+        core.run(0, 0);
+        const offset = core.lfoOffset(1, 0);    // delay samples
+        const value = core.lfoValue(1, 0);      // S.23
+        // Equal but for the floor: the value IS the tap, ten bits further over.
+        assert.ok(Math.abs(offset * 1024 - value) < 2,
+            `tap ${offset} and value ${value} disagree about the range`);
+    }
+    assert.ok(core.sinPhase[1] > 0, 'SIN1 never moved, so nothing was compared');
+});
+
+test('a pot written to SIN0_RANGE sets the amplitude, as AN-0001 says', () => {
+    // The app note's own second example, with the pot read straight across.
+    const core = load([
+        wlds(0, 0, 32767),
+        word(S1_14(1.0), POT0, OP.RDAX),
+        word(0, SIN0_RANGE, OP.WRAX),
+        cho(CHO_RDAL, SIN0, F_REG | F_COS, 0),
+        word(0, REG.DACL, OP.WRAX),
+    ]);
+    const settle = (pot) => {
+        // setPots advances the chip's pot filter one step per call.
+        for (let i = 0; i < 8000; i++) { core.setPots([pot, 0, 0]); core.run(0, 0); }
+        return core.getDACL();
+    };
+    const half = settle(0.5), full = settle(1.0);
+    assert.ok(Math.abs(half - 0.5) < 0.01, `pot at half gave ${half}`);
+    assert.ok(Math.abs(full - 1.0) < 0.01, `pot at full gave ${full}`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
     try {
