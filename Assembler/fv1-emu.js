@@ -55,11 +55,34 @@ class FV1Core {
         this.ACC_MIN = -0x800000;
         this.ONE = 0x800000;        // 1.0 in S.23
 
-        // Register file addresses
-        this.SIN0_RATE = 0x00; this.SIN0_RANGE = 0x01;
-        this.SIN1_RATE = 0x02; this.SIN1_RANGE = 0x03;
-        this.RMP0_RATE = 0x04; this.RMP0_RANGE = 0x05;
-        this.RMP1_RATE = 0x06; this.RMP1_RANGE = 0x07;
+        // Register file addresses.
+        //
+        // The LFOs come first: SIN0_RATE/RANGE at 0x00-0x01 through
+        // RMP1_RATE/RANGE at 0x06-0x07, and under #extended SIN2/SIN3 and
+        // RMP2/RMP3 in 0x08-0x0f, the block the FV-1 leaves empty between
+        // RMP1_RANGE and POT0 -- eight registers,
+        // which is four LFOs' worth in the same rate/range pairs. An LFO's
+        // rate and range ARE these registers: nothing else holds a copy, and
+        // they are read fresh every sample, so writing SIN2_RATE from a pot
+        // gives a pot-controlled LFO on any of the eight. These tables are
+        // the map: indexed by select within a kind, 0-3, and not arithmetic,
+        // since the first two pairs sit below 0x08 and the new two above it.
+        this.SIN_RATE_REGS  = [0x00, 0x02, 0x08, 0x0a];
+        this.SIN_RANGE_REGS = [0x01, 0x03, 0x09, 0x0b];
+        this.RMP_RATE_REGS  = [0x04, 0x06, 0x0c, 0x0e];
+        this.RMP_RANGE_REGS = [0x05, 0x07, 0x0d, 0x0f];
+        // The LFO code an instruction carries -> this core's own LFO index.
+        //
+        // Three bits on the wire: the FV-1's two, whose upper bit already
+        // means "ramp", plus one above them, so 0-3 mean what they always did
+        // and the new four keep the kind bit in the same place. That is what
+        // lets the assembler's `lfo & 2` flag check and its `| 2` kind-forcing
+        // work on the new codes unchanged.
+        //
+        // Inside here the order is different -- sines 0-3, ramps 4-7 -- so
+        // "is it a ramp" is one compare. Programs never see this order.
+        this.LFO_FROM_CODE = [0, 1, 4, 5, 2, 3, 6, 7];
+        this.LFO_RMP0 = 4;
         this.POT0 = 0x10; this.POT1 = 0x11; this.POT2 = 0x12;
         // POT3-POT5 exist only under #extended and are not contiguous with
         // the first three: 0x13 sits next to POT2 but 0x19 leaves 0x1c-0x1f
@@ -82,6 +105,10 @@ class FV1Core {
         this.OP_EXP = 0x0C; this.OP_SOF = 0x0D; this.OP_AND = 0x0E;
         this.OP_OR = 0x0F; this.OP_XOR = 0x10; this.OP_SKP = 0x11;
         this.OP_WLDX = 0x12; this.OP_JAM = 0x13; this.OP_CHO = 0x14;
+        // #extended. The FV-1 assigns 0-20, so a legacy image cannot hold
+        // this opcode: an unclaimed opcode value cannot arrive by accident
+        // the way a spare bit inside a field could.
+        this.OP_RAND = 0x15;
         // WLDS and WLDR share opcode 0x12. The decoder rewrites the ramp form
         // to this synthetic opcode so the two never have to be told apart by
         // a flag bit inside an operand field.
@@ -96,6 +123,13 @@ class FV1Core {
         this.CHO_COMPA = 0x08; this.CHO_RPTR2 = 0x10; this.CHO_NA = 0x20;
 
         this.SAMPLE_RATE = 32768;
+
+        // RAND's generator is seeded from here on every reset, so a run
+        // repeats exactly and two runs of one program can be compared. The
+        // hardware XORs a ring-oscillator bit into the same word every
+        // sample, which is what makes the pedal's sequence unpredictable;
+        // a simulator that did the same could not be tested at all.
+        this.RAND_SEED = 0x9E3779B9;
 
         // Decoded program: parallel typed arrays keep the inner loop fast.
         this.iOp = new Int32Array(this.PROG_LEN);
@@ -222,6 +256,12 @@ class FV1Core {
             case this.OP_WRHX:
             case this.OP_WRLX:
             case this.OP_MAXX:
+            // RAND is in this group on purpose: it takes a register and an
+            // S1.14 coefficient and nothing else, so it is field for field a
+            // RDAX -- a new opcode over an operand layout that already
+            // exists. Bits 15:11 are unused, as they are for the rest of the
+            // group.
+            case this.OP_RAND:
                 this.iA[i] = (word >>> 16) & 0xFFFF;     // S1.14 coefficient
                 this.iB[i] = (word >>> 5) & 0x3F;        // register
                 break;
@@ -248,29 +288,42 @@ class FV1Core {
                 this.iB[i] = (word >>> 21) & 0x3F;       // skip count
                 break;
 
-            case this.OP_WLDX:
+            case this.OP_WLDX: {
                 // WLDS and WLDR share opcode 0x12. The LFO select field tells
                 // them apart: SIN0/SIN1 are 0b00/0b01 and RMP0/RMP1 are
                 // 0b10/0b11, so bit 30 is set only for the ramp form.
+                //
+                // #extended: bit 31 is the select's upper bit in both forms.
+                // It is the only bit WLDS has -- amplitude fills 5-19 and
+                // rate 20-28 -- and WLDR could have used 7-12 instead, but
+                // the same bit in both keeps the select one shape. It is read
+                // unconditionally: no WLDS or WLDR in the corpus sets it, so
+                // a legacy image decodes to the select it always had.
+                const sel = ((word >>> 29) & 0x01) | ((word >>> 30) & 0x02);
                 if ((word >>> 30) & 0x01) {
                     this.iOp[i] = this.OP_WLDR;
-                    this.iA[i] = (word >>> 29) & 0x01;          // ramp 0 or 1
+                    this.iA[i] = sel;                           // ramp 0-3
                     this.iB[i] = (word >>> 13) & 0xFFFF;        // frequency
                     this.iC[i] = (word >>> 5) & 0x03;           // range code
                 } else {
-                    this.iA[i] = (word >>> 29) & 0x01;          // sin 0 or 1
+                    this.iA[i] = sel;                           // sin 0-3
                     this.iB[i] = (word >>> 20) & 0x1FF;         // frequency
                     this.iC[i] = (word >>> 5) & 0x7FFF;         // amplitude
                 }
                 break;
+            }
 
             case this.OP_JAM:
-                this.iA[i] = (word >>> 6) & 0x03;
+                // Two bits on the FV-1 with nothing above them, three here.
+                this.iA[i] = this.LFO_FROM_CODE[(word >>> 6) & 0x07];
                 break;
 
             case this.OP_CHO:
                 this.iA[i] = (word >>> 30) & 0x03;       // type
-                this.iB[i] = (word >>> 21) & 0x03;       // LFO select
+                // The datasheet leaves bit 23 blank between N and the flags,
+                // so N is three bits, 21-23. Nothing in the corpus sets bit
+                // 23, which is what makes reading it unconditionally safe.
+                this.iB[i] = this.LFO_FROM_CODE[(word >>> 21) & 0x07];
                 this.iC[i] = (word >>> 24) & 0x3F;       // flags
                 this.iD[i] = (word >>> 5) & 0xFFFF;      // address / offset
                 break;
@@ -293,8 +346,9 @@ class FV1Core {
 
         // LFO phase / position. Rate and range live in the register file so
         // that programs can change them while running.
-        this.sinPhase = [0, 0];
-        this.rampPos = [0, 0];
+        this.sinPhase = [0, 0, 0, 0];
+        this.rampPos = [0, 0, 0, 0];
+        this.randState = this.RAND_SEED >>> 0;
 
         this.potSmooth = new Array(this.POT_COUNT).fill(0);
     }
@@ -324,21 +378,26 @@ class FV1Core {
     // The app note's own example, wlds SIN0,5,16384, is documented as
     // "+/-4096 samples for a total delay requirement of 8193".
     sinAmpOf(i) {
-        const ka = Math.floor(this.regs[i === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] / 256) & 0x7FFF;
+        const ka = Math.floor(this.regs[this.SIN_RANGE_REGS[i]] / 256) & 0x7FFF;
         return ka / 4;
     }
 
     rampAmpOf(i) {
-        const code = this.regs[i === 0 ? this.RMP0_RANGE : this.RMP1_RANGE];
+        const code = this.regs[this.RMP_RANGE_REGS[i]];
         if (code === 3) return 512;
         if (code === 2) return 1024;
         if (code === 1) return 2048;
         return 4096;
     }
 
+    // All eight are advanced, where the firmware advances only the ones some
+    // CHO in the program names. The saving there is cycles on an M0+ and
+    // nothing else: CHO is the only instruction that observes a phase, so a
+    // phase nothing reads is not state, and stepping it changes nothing a
+    // program can see.
     updateLFOs() {
-        for (let i = 0; i < 2; i++) {
-            const rateReg = this.regs[i === 0 ? this.SIN0_RATE : this.SIN1_RATE];
+        for (let i = 0; i < 4; i++) {
+            const rateReg = this.regs[this.SIN_RATE_REGS[i]];
             // AN-0001: ACC[22:14] maps to the 9-bit frequency field, and
             // Kf = 2^17 * (2*pi*f / R). Rearranged, the stored value is the
             // angular step in radians per sample divided by 2^17, giving
@@ -349,8 +408,8 @@ class FV1Core {
             else if (this.sinPhase[i] < -Math.PI * 2) this.sinPhase[i] += Math.PI * 2;
         }
 
-        for (let i = 0; i < 2; i++) {
-            const rateReg = this.regs[i === 0 ? this.RMP0_RATE : this.RMP1_RATE];
+        for (let i = 0; i < 4; i++) {
+            const rateReg = this.regs[this.RMP_RATE_REGS[i]];
             const amp = this.rampAmpOf(i);
             // The ramp carries 1024 sub-sample steps per sample of range.
             const step = Math.floor(rateReg / 256) / 16 / 1024;
@@ -362,9 +421,10 @@ class FV1Core {
         }
     }
 
-    // Returns the LFO output as a delay offset in samples (may be fractional)
+    // Returns the LFO output as a delay offset in samples (may be fractional).
+    // `sel` is the internal index: sines 0-3, ramps 4-7.
     lfoOffset(sel, flags) {
-        if (sel === 0 || sel === 1) {
+        if (sel < this.LFO_RMP0) {
             const phase = (flags & this.CHO_COS)
                 ? this.sinPhase[sel] + Math.PI / 2
                 : this.sinPhase[sel];
@@ -372,7 +432,7 @@ class FV1Core {
             if (flags & this.CHO_COMPA) v = -v;
             return v;
         }
-        const i = sel - 2;
+        const i = sel - this.LFO_RMP0;
         const amp = this.rampAmpOf(i);
         let pos = this.rampPos[i];
         if (flags & this.CHO_RPTR2) {
@@ -384,7 +444,7 @@ class FV1Core {
 
     // Normalised LFO value in S.23, used by CHO RDAL / CHO SOF
     lfoValue(sel, flags) {
-        if (sel === 0 || sel === 1) {
+        if (sel < this.LFO_RMP0) {
             const phase = (flags & this.CHO_COS)
                 ? this.sinPhase[sel] + Math.PI / 2
                 : this.sinPhase[sel];
@@ -397,8 +457,27 @@ class FV1Core {
         // program that turns a ramp into a triangle relies on the 0 to 0.5
         // figure ("cho rdal,rmp0 / sof 1,-0.25 / absa"), and the servo idiom
         // that steers a ramp to a delay position relies on the same scale.
-        const i = sel - 2;
+        const i = sel - this.LFO_RMP0;
         return Math.floor(this.rampPos[i] * 1024);
+    }
+
+    // ---- RAND's generator ----------------------------------------------
+    //
+    // A 32-bit LCG, with the value taken from bits 31:8. Which 24 bits is not
+    // a detail: an LCG's low bits are its bad ones -- bit 0 alternates, bit 1
+    // has period 4 -- and its high bits are its good ones, so the
+    // accumulator's 24 come off the top. The period is 2^32 from every seed,
+    // so no state stalls it, which is the reason not to reach for an
+    // xorshift: that is an LFSR under another name, with zero as a fixed
+    // point and exactly the structure this instruction exists to get away
+    // from. A program that wants noise on an FV-1 builds a maximal-length
+    // LFSR out of AND/XOR/SOF -- four or five of its 128 instructions, for a
+    // sequence with audible structure.
+    randNext() {
+        // The product stays under 2^53, so it is exact before ToUint32 folds
+        // it back to 32 bits.
+        this.randState = (this.randState * 1664525 + 1013904223) >>> 0;
+        return this.randState;
     }
 
     // ---- delay RAM access ----------------------------------------------
@@ -420,8 +499,8 @@ class FV1Core {
     // the end of the delay and 1.0 when it is in the middle" - a triangle
     // across the ramp, not the ramp itself.
     xfadeCoef(sel) {
-        if (sel < 2) return 0;                  // NA is a ramp-only flag
-        const i = sel - 2;
+        if (sel < this.LFO_RMP0) return 0;      // NA is a ramp-only flag
+        const i = sel - this.LFO_RMP0;
         const amp = this.rampAmpOf(i);
         if (amp <= 0) return 0;
         const norm = this.rampPos[i] / amp;     // 0..1 across the ramp
@@ -627,27 +706,32 @@ class FV1Core {
             case this.OP_WLDX: {
                 // WLDS: load sine LFO rate and range into the registers.
                 // AN-0001: ACC[22:14] holds Kf and ACC[22:8] holds Ka.
-                const sel = a & 0x01;
-                this.regs[sel === 0 ? this.SIN0_RATE : this.SIN1_RATE] = (b & 0x1FF) * 16384;
-                this.regs[sel === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] = (c & 0x7FFF) * 256;
+                const sel = a & 0x03;
+                this.regs[this.SIN_RATE_REGS[sel]] = (b & 0x1FF) * 16384;
+                this.regs[this.SIN_RANGE_REGS[sel]] = (c & 0x7FFF) * 256;
                 this.sinPhase[sel] = 0;
                 break;
             }
 
             case this.OP_WLDR: {
                 // WLDR: load ramp LFO rate and range into the registers
-                const sel = a & 0x01;
+                const sel = a & 0x03;
                 const rate = this.sext(b, 16);
                 let rateReg = (Math.abs(rate) & 0x7FFF) * 256;
                 if (rate < 0) rateReg = -rateReg;
-                this.regs[sel === 0 ? this.RMP0_RATE : this.RMP1_RATE] = rateReg;
-                this.regs[sel === 0 ? this.RMP0_RANGE : this.RMP1_RANGE] = c & 0x03;
+                this.regs[this.RMP_RATE_REGS[sel]] = rateReg;
+                this.regs[this.RMP_RANGE_REGS[sel]] = c & 0x03;
                 this.rampPos[sel] = 0;
                 break;
             }
 
             case this.OP_JAM:
-                this.rampPos[a & 0x01] = 0;
+                // `a` is the internal index. The assembler forces the kind
+                // bit, so this is always a ramp; a hand-built word without it
+                // parks the sine's phase instead, which is what the register
+                // it names would do.
+                if (a < this.LFO_RMP0) this.sinPhase[a] = 0;
+                else this.rampPos[a - this.LFO_RMP0] = 0;
                 break;
 
             case this.OP_CHO: {
@@ -695,14 +779,29 @@ class FV1Core {
                 break;
             }
 
+            case this.OP_RAND:
+                // REG = C * uniform[-1, 1). The accumulator is untouched --
+                // the only register write in the machine that leaves it alone
+                // -- so a RAND drops in between any two instructions with
+                // nothing saved around it. C is the amplitude, and it is not
+                // decoration: `rand noise, 1.0` is full-scale white and
+                // `rand dither, 0.002` a dither, which would otherwise cost a
+                // RDAX/WRAX pair. The draw spans the accumulator's exact
+                // range, negative rail included, so nothing is clipped before
+                // the multiply.
+                this.regs[b] = this.mulS1_14(
+                    this.sext(this.randNext() >>> 8, 24), a);
+                break;
+
             default:
                 break;
         }
 
         // Every instruction that writes ACC latches PACC. SKP returns from
-        // inside the switch above, and WLDS, WLDR and JAM only touch the LFO
-        // registers, so none of them disturb it.
-        if (op !== this.OP_WLDX && op !== this.OP_WLDR && op !== this.OP_JAM) {
+        // inside the switch above, and WLDS, WLDR, JAM and RAND only touch
+        // the LFO registers or a register file entry, so none disturb it.
+        if (op !== this.OP_WLDX && op !== this.OP_WLDR && op !== this.OP_JAM &&
+            op !== this.OP_RAND) {
             this.pacc = entryAcc;
         }
 

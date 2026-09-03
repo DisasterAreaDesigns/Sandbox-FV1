@@ -87,6 +87,13 @@ class FV1Assembler {
             'WLDR': 0b10010,
             'JAM': 0b10011,
             'CHO': 0b10100,
+            // Opcode 21. The FV-1 assigns 0-20, so 21 upward is unclaimed --
+            // and unclaimed more firmly than any spare bit, because no
+            // assembler emits an opcode it has no mnemonic for and short
+            // programs are padded with SKP. Like RMPAX this is the real
+            // encoding rather than a stub, and parseInstruction is what
+            // refuses it when the pragma is off.
+            'RAND': 0b10101,
             'RAW': 0b00000
         };
 
@@ -99,8 +106,11 @@ class FV1Assembler {
         // POT3 would otherwise fail as 'Undefined symbol', which is true and
         // tells you nothing; naming the cause is the whole job. The assembly
         // still fails, exactly as it did.
-        this.EXT_ONLY_OPS = ['RMPAX'];
-        this.EXT_ONLY_REGS = ['POT3', 'POT4', 'POT5'];
+        this.EXT_ONLY_OPS = ['RMPAX', 'RAND'];
+        this.EXT_ONLY_REGS = ['POT3', 'POT4', 'POT5',
+            'SIN2', 'SIN3', 'RMP2', 'RMP3',
+            'SIN2_RATE', 'SIN2_RANGE', 'SIN3_RATE', 'SIN3_RANGE',
+            'RMP2_RATE', 'RMP2_RANGE', 'RMP3_RATE', 'RMP3_RANGE'];
         this.applyPragmas();
     }
 
@@ -174,9 +184,32 @@ class FV1Assembler {
         this.symtbl['POT3'] = 0x19;
         this.symtbl['POT4'] = 0x1a;
         this.symtbl['POT5'] = 0x1b;
+        // Four more LFOs, in the block 0x08-0x0f that the FV-1 leaves empty
+        // between RMP1_RANGE and POT0. Eight registers is four LFOs' worth in
+        // the same rate/range pairs, so nothing about declaring or driving an
+        // LFO changes: WLDS/WLDR write these, wrax writes them, rdax reads
+        // them, and the LFO reads them fresh every sample.
+        this.symtbl['SIN2_RATE'] = 0x08;
+        this.symtbl['SIN2_RANGE'] = 0x09;
+        this.symtbl['SIN3_RATE'] = 0x0a;
+        this.symtbl['SIN3_RANGE'] = 0x0b;
+        this.symtbl['RMP2_RATE'] = 0x0c;
+        this.symtbl['RMP2_RANGE'] = 0x0d;
+        this.symtbl['RMP3_RATE'] = 0x0e;
+        this.symtbl['RMP3_RANGE'] = 0x0f;
+        // The LFO codes CHO and JAM name. The FV-1's field is two bits and its
+        // upper bit already means "ramp", so the third bit goes ABOVE it: 0-3
+        // mean what they always did and the new four keep the kind bit in the
+        // same place. That is what lets parseChoFlags' `lfo & 2` check and
+        // WLDR/JAM's `| 2` kind-forcing carry over to the new codes untouched.
+        this.symtbl['SIN2'] = 0x04;
+        this.symtbl['SIN3'] = 0x05;
+        this.symtbl['RMP2'] = 0x06;
+        this.symtbl['RMP3'] = 0x07;
         if (typeof debugLog === 'function') {
             debugLog('Extended instruction set enabled: 65536 words of delay ' +
-                'memory. This program will not run on an FV-1.', 'info');
+                'memory, RMPAX, RAND, POT3-POT5 and eight LFOs. This program ' +
+                'will not run on an FV-1.', 'info');
         }
     }
 
@@ -974,11 +1007,17 @@ class FV1Assembler {
             lfo = 1;
         }
 
-        // Allow 0-3 for normal LFOs, and 8-9 for COS LFOs in CHO RDAL
-        if ((lfo >= 0 && lfo <= 3) || (mnemonic === 'CHO' && (lfo === 8 || lfo === 9))) {
+        // Allow 0-3 for normal LFOs -- 0-7 under #extended, which adds SIN2,
+        // SIN3, RMP2 and RMP3 above them -- and 8-9 for COS LFOs in CHO RDAL.
+        const maxLfo = this.extended ? 7 : 3;
+        if ((lfo >= 0 && lfo <= maxLfo) ||
+            (mnemonic === 'CHO' && (lfo === 8 || lfo === 9))) {
             return lfo;
         } else {
-            this.error(`Invalid LFO ${lfo} for ${mnemonic}`, this.instLine);
+            this.error(`Invalid LFO ${lfo} for ${mnemonic}` +
+                (!this.extended && lfo >= 4 && lfo <= 7
+                    ? ' (#extended has SIN2, SIN3, RMP2 and RMP3)' : ''),
+                this.instLine);
             return 0;
         }
     }
@@ -1069,7 +1108,14 @@ class FV1Assembler {
             case 'MAXX':
             case 'RDFX':
             case 'WRLX':
-            case 'WRHX': {
+            case 'WRHX':
+            // RAND is in this group on purpose. It takes a register and an
+            // S1.14 coefficient and nothing else, so it is field for field a
+            // RDAX -- a new opcode value over an operand layout that already
+            // exists, which is one fewer thing for this assembler and the
+            // decoder to disagree about. The coefficient is the amplitude:
+            // `rand noise, 1.0` is full scale, `rand dither, 0.002` a dither.
+            case 'RAND': {
                 const reg = this.parseRegister(mnemonic);
                 this.accept('OPERATOR', 'Expected comma');
                 const mult = this.parseS1_14(mnemonic);
@@ -1151,7 +1197,11 @@ class FV1Assembler {
             }
 
             case 'WLDS': {
-                const lfo = this.parseLFO(mnemonic) & 0x01;
+                // Clear the kind bit and keep both select bits, so `wlds RMP0`
+                // still lands on SIN0 the way it always has while SIN2 and
+                // SIN3 keep bit 2. Without the pragma parseLFO returns 0-3 and
+                // this masks exactly as the old `& 0x01` did.
+                const lfo = this.parseLFO(mnemonic) & 0x05;
                 this.accept('OPERATOR', 'Expected comma');
                 const freq = Math.floor(this.parseExpression()) & 0x1FF;
                 this.accept('OPERATOR', 'Expected comma');
@@ -1665,6 +1715,11 @@ class FV1Assembler {
                     case 'WRLX':
                     case 'WRHX':
                     case 'MAXX':
+                    // Field for field a RDAX under an opcode of its own: the
+                    // register at 10:5, the S1.14 coefficient at 31:16, and
+                    // bits 15:11 unused as they are for every member of this
+                    // group. See the note in parseInstruction.
+                    case 'RAND':
                         // Use the raw register value from symbol table (0x20-0x3F range)
                         const regValue = inst.cmd[1] & 0x3F;
                         machineCode |= (inst.cmd[2] & 0xFFFF) << 16;  // 16-bit constant
@@ -1707,29 +1762,47 @@ class FV1Assembler {
                         machineCode |= (inst.cmd[2] & 0x3F) << 21;
                         break;
 
+                    // WLDS and WLDR share opcode 18 and bit 30 tells them
+                    // apart, so both write the same select in the same shape:
+                    // bit 29 its low bit, bit 30 the kind, bit 31 its high
+                    // one. Bit 31 was free in both -- WLDS has no other spare
+                    // bit, amplitude filling 5-19 and rate 20-28, and WLDR
+                    // could have used 7-12 instead, but one shape is worth
+                    // more than the tidier field. A legacy select is 0 or 1
+                    // within its kind, so bit 31 stays clear and the word is
+                    // the one the FV-1's assembler would have written.
                     case 'WLDS':
-                        // 1-bit LFO select at bit 29, 9-bit frequency at bits 20-28, 15-bit amplitude at bits 5-19
+                        // 9-bit frequency at bits 20-28, 15-bit amplitude at bits 5-19
                         machineCode |= (inst.cmd[1] & 0x01) << 29;
+                        machineCode |= ((inst.cmd[1] >> 2) & 0x01) * 0x80000000;
                         machineCode |= (inst.cmd[2] & 0x1FF) << 20;
                         machineCode |= (inst.cmd[3] & 0x7FFF) << 5;
                         break;
 
                     case 'WLDR':
-                        // 2-bit LFO select at bits 29-30, 16-bit frequency at bits 13-28, 2-bit amplitude at bits 5-6
+                        // 16-bit frequency at bits 13-28, 2-bit amplitude at bits 5-6
                         machineCode |= (inst.cmd[1] & 0x03) << 29;
+                        machineCode |= ((inst.cmd[1] >> 2) & 0x01) * 0x80000000;
                         machineCode |= (inst.cmd[2] & 0xFFFF) << 13;
                         machineCode |= (inst.cmd[3] & 0x03) << 5;
                         break;
 
                     case 'JAM':
-                        // 2-bit LFO select at bits 6-7
-                        machineCode |= (inst.cmd[1] & 0x03) << 6;
+                        // LFO select at bits 6-8. The FV-1 carries two bits
+                        // here and nothing above them; the field grows by one
+                        // to hold the same code CHO does.
+                        machineCode |= (inst.cmd[1] & 0x07) << 6;
                         break;
 
                     case 'CHO':
-                        // 2-bit type at bits 30-31, 2-bit LFO at bits 21-22, 6-bit flags at bits 24-29, 16-bit arg at bits 5-20
+                        // 2-bit type at bits 30-31, 3-bit LFO at bits 21-23, 6-bit flags at bits 24-29, 16-bit arg at bits 5-20
+                        //
+                        // The datasheet leaves bit 23 blank between N and the
+                        // flags, so N carries the code's upper bit there.
+                        // Type and flags are untouched, and every flag means
+                        // on SIN3 or RMP3 what it means on SIN0 or RMP0.
                         machineCode |= (inst.cmd[1] & 0x03) << 30;
-                        machineCode |= (inst.cmd[2] & 0x03) << 21;
+                        machineCode |= (inst.cmd[2] & 0x07) << 21;
                         machineCode |= (inst.cmd[3] & 0x3F) << 24;
                         machineCode |= (inst.cmd[4] & 0xFFFF) << 5;
                         break;
@@ -1744,6 +1817,8 @@ class FV1Assembler {
                         break;
                 }
             }
+
+            machineCode = machineCode >>> 0;
 
             // Write as big-endian 32-bit value to program buffer
             const offset = i * 4;

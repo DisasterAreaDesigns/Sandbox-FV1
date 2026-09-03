@@ -278,9 +278,9 @@ function simLoadProgram() {
     const el = document.getElementById('simProgramState');
     if (el) {
         el.title = ext
-            ? 'Extended instruction set: 65536 words of delay, RMPAX, and ' +
-              'POT3-POT5. The simulator runs all of it. This program will ' +
-              'not run on an FV-1.'
+            ? 'Extended instruction set: 65536 words of delay, RMPAX, RAND, ' +
+              'POT3-POT5 and eight LFOs. The simulator runs all of it. This ' +
+              'program will not run on an FV-1.'
             : '';
     }
     return true;

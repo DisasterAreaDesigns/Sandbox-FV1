@@ -60,20 +60,20 @@ require(['vs/editor/editor.main'], function() {
 
                 // Instructions - organized by category
                 [/\b(rda|rmpax|rmpa|wra|wrap)\b/, 'keyword'],
-                [/\b(rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx)\b/, 'keyword'],
+                [/\b(rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx|rand)\b/, 'keyword'],
                 [/\b(log|exp|sof|and|or|xor|not|clr)\b/, 'keyword'],
                 [/\b(skp|jmp|nop)\b/, 'keyword'],
                 [/\b(wlds|wldr|jam|cho)\b/, 'keyword'],
 
                 // CHO sub-types and LFO names
-                [/\b(sin0|sin1|cos0|cos1|rmp0|rmp1)\b/, 'constant'],
+                [/\b(sin[0-3]|cos0|cos1|rmp[0-3])\b/, 'constant'],
                 [/\b(sin|cos|reg|compa|compc|rptr2|na)\b/, 'constant'],
                 [/\b(run|zrc|zro|gez|neg)\b/, 'constant'],
 
                 // Registers - specific patterns to avoid partial matches
                 [/\breg([0-9]|[12][0-9]|3[01])\b/, 'variable'],
-                [/\b(sin0_rate|sin0_range|sin1_rate|sin1_range)\b/, 'variable'],
-                [/\b(rmp0_rate|rmp0_range|rmp1_rate|rmp1_range)\b/, 'variable'],
+                [/\b(sin[0-3]_rate|sin[0-3]_range)\b/, 'variable'],
+                [/\b(rmp[0-3]_rate|rmp[0-3]_range)\b/, 'variable'],
                 // pot3-pot5 exist only under #extended, but the tokenizer
                 // colours them like the rest: it reads shape, not meaning,
                 // and the assembler is what says they need the pragma.
