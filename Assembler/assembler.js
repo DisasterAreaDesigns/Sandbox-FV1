@@ -949,6 +949,37 @@ class FV1Assembler {
         return arg & 0x7FF;
     }
 
+    // A 15 bit delay address, fixed at that width whatever the pragma says.
+    //
+    // Deliberately separate from parseDelayAddress: WLDS reads its sine
+    // amplitude through here, and that field must not follow the address width
+    // anywhere. Amplitude fills bits 5-19 and rate 20-28, so WLDS has no spare
+    // bit to widen into. Sharing the address parser meant '#extended' turned a
+    // diagnostic into an out of range amplitude masked off in
+    // generateMachineCode, which is silent and wrong. No extended hint either:
+    // the pragma is not what stands between this operand and success.
+    parseD_15(mnemonic = '') {
+        let addr = this.parseExpression();
+
+        if (addr >= this.MIN_S_15 && addr <= this.MAX_S_15) {
+            addr = Math.round(addr * this.REF_S_15);
+        } else {
+            addr = Math.round(addr);
+            if (addr < -0x8000 || addr > 0x7FFF) {
+                if (this.clamp) {
+                    addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
+                    this.warn(`Address clamped to 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
+                } else {
+                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
+                    addr = 0;
+                }
+            }
+        }
+        return addr & 0x7FFF;
+    }
+
+    // parseD_15 with the width in force, which '#extended' widens to 16 bits.
+    //
     // The real-valued form stays pinned at REF_S_15, so `rda 0.5` still means
     // address 16384 and not half of a bigger tank. Porting a source by adding
     // the pragma must not move an address that was already there.
@@ -1205,7 +1236,7 @@ class FV1Assembler {
                 this.accept('OPERATOR', 'Expected comma');
                 const freq = Math.floor(this.parseExpression()) & 0x1FF;
                 this.accept('OPERATOR', 'Expected comma');
-                const amp = this.parseDelayAddress(mnemonic);
+                const amp = this.parseD_15(mnemonic);
                 this.pl.push({
                     cmd: [mnemonic, lfo, freq, amp],
                     addr: this.icnt
