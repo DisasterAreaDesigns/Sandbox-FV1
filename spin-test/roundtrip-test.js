@@ -393,6 +393,58 @@ test('the generator repeats from a reset, so two runs can be compared', () => {
     assert.deepEqual(five(), five());
 });
 
+// ---- Field widths -------------------------------------------------------
+//
+// The pragma widens delay addresses to 16 bits. It must not widen anything
+// else, and asfv1-extended is the reference for where the line falls: this
+// assembler is held to byte-identical output with it.
+
+/** Assemble without clamping and return the messages. */
+function errorsFor(source) {
+    const asm = new FV1Assembler(source, { clamp: false, spinReals: true });
+    asm.parse();
+    asm.generateMachineCode();
+    return asm.errors.join('\n');
+}
+
+test('#extended does not widen the WLDS amplitude', () => {
+    // Amplitude fills bits 5-19 and rate 20-28, so WLDS has no spare bit to
+    // widen into -- the field is 15 bits with or without the pragma. Reading it
+    // through the delay-address parser made '#extended' silently truncate
+    // 40000 to its low 15 bits, 7232, where asfv1-extended clamps to 32767.
+    const amp = (src) => firstCoefficient(src, 5, 0x7FFF);
+
+    assert.equal(amp('#extended\nwlds SIN0, 26, 40000\n'), 32767,
+        'the amplitude clamped, rather than being truncated to 7232');
+    assert.equal(amp('wlds SIN0, 26, 40000\n'), 32767,
+        'and the pragma made no difference to it');
+    assert.equal(amp('#extended\nwlds SIN0, 26, 32767\n'), 32767,
+        'a full-scale amplitude still fits');
+});
+
+test('an out-of-range WLDS amplitude is an error under #extended too', () => {
+    // The pragma turning a diagnostic into silent truncation is the whole
+    // failure: with the pragma on, this has to keep failing.
+    for (const src of ['wlds SIN0, 26, 40000\n', '#extended\nwlds SIN0, 26, 40000\n']) {
+        const msg = errorsFor(src);
+        assert.match(msg, /Invalid address 0x9c40 for WLDS/,
+            `expected a range error, got: ${msg || '(none)'}`);
+        // The hint is true of RDA/WRA/WRAP and not of this operand, so
+        // offering it here sends the reader after a pragma that cannot help.
+        assert.doesNotMatch(msg, /#extended/,
+            'the amplitude is not an address; the pragma hint misleads here');
+    }
+});
+
+test('#extended still widens a real delay address', () => {
+    // The other direction: fixing the amplitude must not narrow RDA. Bit 20
+    // carries address bit 15, so 40000 lands as 0x9c40 across bits 5-20.
+    const word = (src) => firstCoefficient(src, 5, 0xFFFF);
+    assert.equal(word('#extended\nrda 40000, 1.0\n'), 40000);
+    assert.match(errorsFor('rda 40000, 1.0\n'), /Invalid address 0x9c40 for RDA \(#extended/,
+        'and without the pragma RDA is the operand the hint is for');
+});
+
 // -------------------------------------------------------------------------
 
 let failed = 0;
