@@ -11,7 +11,7 @@ const FV1Core = require('../Assembler/fv1-emu.js');
 const OP = {
     RDAX: 0x04, RDFX: 0x05, WRAX: 0x06, WRHX: 0x07, WRLX: 0x08,
     MULX: 0x0A, LOG: 0x0B, EXP: 0x0C, SOF: 0x0D, SKP: 0x11,
-    WLDX: 0x12, JAM: 0x13,
+    WLDX: 0x12, JAM: 0x13, CHO: 0x14,
 };
 const REG = { ADCL: 0x14, ADCR: 0x15, DACL: 0x16, DACR: 0x17, REG0: 0x20, REG1: 0x21 };
 
@@ -200,6 +200,79 @@ test('the ADC input rounds rather than truncating', () => {
     assert.ok(worst <= LSB, `worst error ${(worst / LSB).toFixed(2)} LSB`);
     const bias = Math.abs(sum / samples) / LSB;
     assert.ok(bias < 0.1, `mean error ${bias.toFixed(3)} LSB: truncation biases, rounding should not`);
+});
+
+
+// -------------------------------------------------------------------------
+// WLDS and WLDR load the rate and range registers and leave the phase alone.
+// JAM is the only instruction that zeroes a phase, and only for a ramp.
+//
+// SPINAsm gives JAM the operation "0 -> RAMP LFO N" and describes it as
+// resetting "the selected RAMP LFO to its starting point"; WLDS and WLDR have
+// "See Description" for an operation and describe themselves only as loading
+// "frequency and amplitude control values". A reset inside WLDR would make JAM
+// dead silicon, and there is no JAM at all for the sines. The manual's pairing
+// with SKP RUN is advice about cost ("typically", "in most cases"), which it
+// could not be if an unguarded WLD pinned the LFO at zero.
+//
+// Every program in spin-test/files puts its WLD behind SKP RUN, so this is
+// invisible there and only an unguarded WLD can tell the two models apart.
+// -------------------------------------------------------------------------
+
+const wlds = (n, f, a) =>
+    ((((n & 1) << 29) | ((f & 0x1FF) << 20) | ((a & 0x7FFF) << 5) | OP.WLDX) >>> 0);
+
+const wldr = (n, f, c) =>
+    (((1 << 30) | ((n & 1) << 29) | ((f & 0xFFFF) << 13) | ((c & 3) << 5) | OP.WLDX) >>> 0);
+
+// The ramp kind bit sits at 7 and the select at 6, so the field the decoder
+// reads is the LFO code 2 or 3 rather than a bare 0 or 1.
+const jam = (n) => (((1 << 7) | ((n & 1) << 6) | OP.JAM) >>> 0);
+
+const cho = (type, sel, flags, arg) =>
+    (((((type & 3) << 30) | ((flags & 0x3F) << 24) | ((sel & 3) << 21)
+       | ((arg & 0xFFFF) << 5) | OP.CHO)) >>> 0);
+
+const CHO_RDAL = 0x03;
+const RMP0 = 2, RMP1 = 3, SIN0 = 0;
+
+test('an unguarded WLDR leaves the ramp running; only JAM resets it', () => {
+    // The FV-2040 tree's tests/ops/ext_lfo_rmp.spn in its legacy RMP0/RMP1
+    // form. Rate 16384 at range 4096 advances the ramp exactly one sample per
+    // tick, and CHO RDAL hands back position/8192, so after a single tick the
+    // wrapped position 4095 reads as 0.5 less one LSB of the ramp domain.
+    //
+    // Nothing here is behind SKP RUN: both WLDRs and the JAM run every sample.
+    // RMP0 is jammed so it must read zero, and the jam must land on RMP0 and
+    // not RMP1. RMP1 is only ever loaded, so it must free-run.
+    const core = load([
+        wldr(0, 16384, 0),                      // range code 0 is 4096
+        wldr(1, 16384, 0),
+        jam(0),
+        cho(CHO_RDAL, RMP0, 0, 0),
+        word(0, REG.DACR, OP.WRAX),
+        cho(CHO_RDAL, RMP1, 0, 0),
+        word(0, REG.DACL, OP.WRAX),
+    ]);
+    core.run(0, 0);                             // sample 1 only loads the rates
+    core.run(0, 0);
+    assert.equal(core.getDACR(), 0, 'JAM should hold RMP0 at its starting point');
+    assert.ok(Math.abs(core.getDACL() - 0.5) < 1 / 4096,
+        `RMP1 should have ticked to just under 0.5, got ${core.getDACL()}`);
+});
+
+test('an unguarded WLDS leaves the sine phase running', () => {
+    // Kf 100 is a phase step of 100/131072 radians a sample, so a quarter
+    // cycle is 2059 samples and CHO RDAL should be at the positive peak. If
+    // WLDS reset the phase the reading would be zero forever.
+    const core = load([
+        wlds(0, 100, 32767),
+        cho(CHO_RDAL, SIN0, 0, 0),
+        word(0, REG.DACL, OP.WRAX),
+    ]);
+    for (let i = 0; i < 2059; i++) core.run(0, 0);
+    assert.ok(core.getDACL() > 0.99,
+        `sine should be at its peak after a quarter cycle, got ${core.getDACL()}`);
 });
 
 let failed = 0;

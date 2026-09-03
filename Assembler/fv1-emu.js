@@ -703,13 +703,35 @@ class FV1Core {
                 return pc + 1 + (doSkip ? b : 0);
             }
 
+            // WLDS and WLDR write the rate and range registers and nothing
+            // else. They do NOT reset the LFO phase. SPINAsm's own tables are
+            // explicit about which instruction zeroes what: JAM's operation is
+            // written "0 -> RAMP LFO N" and its text is "JAM will reset the
+            // selected RAMP LFO to its starting point", while WLDS and WLDR
+            // have "See Description" for an operation and describe themselves
+            // only as loading "frequency and amplitude control values into the
+            // selected ... LFO". Two further arguments from the same manual:
+            // JAM would be dead silicon if WLDR already reset the ramp it
+            // names, and the FV-1 has no JAM for the sine LFOs at all, so a phase
+            // reset hiding inside WLDS would be the one way to zero a sine and
+            // would not have gone undocumented. The pairing with SKP RUN is
+            // advice about cost -- "typically", "in most cases" -- not a
+            // correctness requirement, which it would have to be if a WLD on
+            // every sample pinned the LFO at zero.
+            //
+            // The distinction is invisible to the usual idiom: every one of
+            // the 109 programs in spin-test/files that loads an LFO does it
+            // behind SKP RUN, so the WLD runs once and a reset there is the
+            // same as no reset. It is total for a program that runs them
+            // unguarded -- pinned at zero versus free-running -- which is what
+            // tests/ops/ext_lfo_rmp.spn in the FV-2040 tree checks, and it
+            // matches that project's core (fv1_core.c, case FV1_OP_WLD).
             case this.OP_WLDX: {
                 // WLDS: load sine LFO rate and range into the registers.
                 // AN-0001: ACC[22:14] holds Kf and ACC[22:8] holds Ka.
                 const sel = a & 0x03;
                 this.regs[this.SIN_RATE_REGS[sel]] = (b & 0x1FF) * 16384;
                 this.regs[this.SIN_RANGE_REGS[sel]] = (c & 0x7FFF) * 256;
-                this.sinPhase[sel] = 0;
                 break;
             }
 
@@ -721,10 +743,10 @@ class FV1Core {
                 if (rate < 0) rateReg = -rateReg;
                 this.regs[this.RMP_RATE_REGS[sel]] = rateReg;
                 this.regs[this.RMP_RANGE_REGS[sel]] = c & 0x03;
-                this.rampPos[sel] = 0;
                 break;
             }
 
+            // The only instruction that zeroes a phase.
             case this.OP_JAM:
                 // `a` is the internal index. The assembler forces the kind
                 // bit, so this is always a ramp; a hand-built word without it
