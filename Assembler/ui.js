@@ -1,5 +1,8 @@
 // UI Functions
 let assembledData = null;
+// Whether the current build carries '#extended'. The 512-byte image has no
+// pragma in it, so the simulator has to be told what tank size to run.
+let assembledExtended = false;
 let outputDirectoryHandle = null;
 let preferredStartDirectory = 'downloads';
 let projectDirectoryHandle = null;
@@ -548,6 +551,7 @@ function assemble() {
         assembler.generateMachineCode();
         assembler.printCodeListing(); // Add this line - only print listing after successful assembly
         assembledData = assembler.program;
+        assembledExtended = !!assembler.extended;
 
         const hex = assembler.toIntelHex();
         document.getElementById('output').value = hex;

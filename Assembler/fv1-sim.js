@@ -21,6 +21,7 @@ let simStream = null;         // live input MediaStream, so we can stop it
 let simFileBuffer = null;
 let simFileBytes = null;      // undecoded copy, so a rate change can re-decode
 let simFileName = null;
+let simExtended = false;      // was the loaded build assembled with #extended
 let simRunning = false;
 let simBypass = false;
 let simMeterTimer = null;
@@ -43,14 +44,14 @@ function buildWorkletSource() {
         '    constructor() {',
         '        super();',
         '        this.core = new FV1Core();',
-        '        this.pots = [0.5, 0.5, 0.5];',
+        '        this.pots = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5];',
         '        this.peakL = 0;',
         '        this.peakR = 0;',
         '        this.frames = 0;',
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
         '            if (d.type === "program") {',
-        '                this.core.setProgram(new Uint8Array(d.bytes), d.reset !== false);',
+        '                this.core.setProgram(new Uint8Array(d.bytes), d.reset !== false, d.extended === true);',
         '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
         '            } else if (d.type === "pots") {',
         '                this.pots = d.values;',
@@ -68,7 +69,7 @@ function buildWorkletSource() {
         '        const inL = hasIn ? input[0] : null;',
         '        const inR = hasIn && input.length > 1 ? input[1] : inL;',
         '        for (let i = 0; i < outL.length; i++) {',
-        '            this.core.setPots(this.pots[0], this.pots[1], this.pots[2]);',
+        '            this.core.setPots(this.pots);',
         '            this.core.run(inL ? inL[i] : 0, inR ? inR[i] : 0);',
         '            const l = this.core.getDACL();',
         '            const r = this.core.getDACR();',
@@ -272,6 +273,12 @@ function simPanic() {
 function simLoadProgram(opts) {
     if (typeof assembledData !== 'undefined' && assembledData) {
         simLoadedProgram = new Uint8Array(assembledData);
+        // The 512 bytes carry no pragma, so the core has to be told. Only the
+        // tank size actually depends on it -- every other part of the extension
+        // sets bits the FV-1 leaves at zero, so the decoder reads both alike.
+        simExtended = typeof assembledExtended !== 'undefined' && !!assembledExtended;
+        simUpdatePotVisibility();
+        simUpdateRateInfo();
     }
     if (!simLoadedProgram) {
         simStatus('Nothing assembled yet - press Assemble first', 'warn');
@@ -282,7 +289,8 @@ function simLoadProgram(opts) {
         simNode.port.postMessage({
             type: 'program',
             bytes: simLoadedProgram.buffer.slice(0),
-            reset: !opts || opts.reset !== false
+            reset: !opts || opts.reset !== false,
+            extended: simExtended
         });
     }
     simSetProgramState(simNode
@@ -530,13 +538,16 @@ function simRateLabel() {
     return (simRate / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kHz';
 }
 
-// The delay RAM is a fixed 32768 words, so its length in seconds -- and the
-// bandwidth -- both follow the crystal.
+// The delay RAM is a fixed number of words -- 32768, or 65536 under
+// '#extended' -- so its length in seconds, and the bandwidth, both follow the
+// crystal.
 function simUpdateRateInfo() {
     const el = document.getElementById('simRateInfo');
     if (!el) return;
-    el.textContent = 'Max delay ' + (32768 / simRate).toFixed(2) + ' s, ' +
-        'Nyquist ' + (simRate / 2000).toFixed(1) + ' kHz';
+    const words = simExtended ? 65536 : 32768;
+    el.textContent = 'Max delay ' + (words / simRate).toFixed(2) + ' s, ' +
+        'Nyquist ' + (simRate / 2000).toFixed(1) + ' kHz' +
+        (simExtended ? ' (extended)' : '');
 }
 
 // ---- controls -------------------------------------------------------------
@@ -552,7 +563,13 @@ function simNumber(id, fallback) {
 // sliders are whole percent, so a MIDI CC -- 128 steps -- cannot be stored in
 // one without losing resolution. Keep the real value here and let the slider
 // be the coarse display of it.
-let simPots = [0.5, 0.5, 0.5];
+// Six: the FV-1's three, plus POT3-POT5 which only an '#extended' program can
+// read. The extra three are always tracked and only shown when one is loaded,
+// so switching between a stock and an extended build does not lose their
+// positions.
+const SIM_POT_COUNT = 6;
+const SIM_STOCK_POTS = 3;
+let simPots = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
 
 // Set one pot from any source. `opts.from` names the control that moved, so a
 // slider is not fought for the thumb while it is the thing being dragged.
@@ -560,7 +577,7 @@ let simPots = [0.5, 0.5, 0.5];
 // caller to refresh, which is how MIDI keeps audio responding at full rate
 // while its redraws are batched.
 function simSetPot(i, v01, opts) {
-    if (i < 0 || i > 2) return;
+    if (i < 0 || i >= SIM_POT_COUNT) return;
     const v = Math.max(0, Math.min(1, v01));
     if (simPots[i] === v) return;
     simPots[i] = v;
@@ -586,7 +603,7 @@ function simPushPots() {
 // initial call at startup. The display is refreshed either way, since the
 // percentage beside an untouched slider still has to be drawn once.
 function simSendPots() {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < SIM_POT_COUNT; i++) {
         simSetPot(i, simNumber('simPot' + i, 50) / 100, {from: 'slider', defer: true});
         simRefreshPotDisplay(i, 'slider');
     }
@@ -644,7 +661,7 @@ function simToggleBypass() {
 // with no tag keeps its hardware name.
 
 function simParseControlNames(src) {
-    const names = {pot: new Array(3).fill(null)};
+    const names = {pot: new Array(SIM_POT_COUNT).fill(null)};
     if (!src) return names;
 
     for (const line of src.split(/\r?\n/)) {
@@ -658,7 +675,7 @@ function simParseControlNames(src) {
         else if (dbl >= 0) cut = dbl + 2;
         const text = cut >= 0 ? line.slice(cut) : line;
 
-        const m = /#(POT[0-2])\b[ \t]*(.*)$/i.exec(text);
+        const m = /#(POT[0-5])\b[ \t]*(.*)$/i.exec(text);
         if (!m) continue;
 
         // Stop the name at a further comment marker or a block-comment close,
@@ -688,7 +705,20 @@ function simRefreshControlNames() {
         if (typeof editor !== 'undefined' && editor && editor.getValue) src = editor.getValue();
     } catch (e) { /* editor not up yet */ }
     const names = simParseControlNames(src);
-    for (let i = 0; i < 3; i++) simSetControlLabel('simPot' + i, names.pot[i], 'POT' + i);
+    for (let i = 0; i < SIM_POT_COUNT; i++) {
+        simSetControlLabel('simPot' + i, names.pot[i], 'POT' + i);
+    }
+}
+
+// POT3-POT5 exist only under '#extended'. Hiding them for a stock build keeps
+// the panel honest: a slider a program cannot read is worse than no slider.
+function simUpdatePotVisibility() {
+    for (let i = SIM_STOCK_POTS; i < SIM_POT_COUNT; i++) {
+        const row = document.getElementById('simPot' + i + 'Row');
+        if (row) row.style.display = simExtended ? '' : 'none';
+    }
+    const note = document.getElementById('simPotNote');
+    if (note) note.style.display = simExtended ? '' : 'none';
 }
 
 // ---- display --------------------------------------------------------------
@@ -753,6 +783,7 @@ function simHookAssemble() {
 document.addEventListener('DOMContentLoaded', () => {
     simHookAssemble();
     simRefreshControlNames();
+    simUpdatePotVisibility();
     simSendPots();
     simOnSourceChange();
     simOnToneFreqChange();

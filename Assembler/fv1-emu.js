@@ -42,8 +42,14 @@
 class FV1Core {
     constructor() {
         this.PROG_LEN = 128;
-        this.DELAY_LEN = 32768;
-        this.DELAY_MASK = 0x7FFF;
+        // The tank is always allocated at the extended size -- 128 KB, which is
+        // nothing here -- and the mask is what decides how much of it a program
+        // can see. An FV-1 program addresses 15 bits and wraps at 32768; one
+        // built with '#extended' addresses 16 and wraps at 65536.
+        this.DELAY_LEN = 65536;
+        this.DELAY_MASK = 0x7FFF;        // the FV-1's, until setProgram says otherwise
+        this.DELAY_MASK_EXT = 0xFFFF;
+        this.extended = false;
 
         this.ACC_MAX = 0x7FFFFF;
         this.ACC_MIN = -0x800000;
@@ -54,7 +60,16 @@ class FV1Core {
         this.SIN1_RATE = 0x02; this.SIN1_RANGE = 0x03;
         this.RMP0_RATE = 0x04; this.RMP0_RANGE = 0x05;
         this.RMP1_RATE = 0x06; this.RMP1_RANGE = 0x07;
+        // SIN2/SIN3/RMP2/RMP3 fill 0x08-0x0f, the gap the FV-1 leaves between
+        // RMP1_RANGE and POT0. Indexed by LFO number, so the four the chip has
+        // and the four '#extended' adds are reached the same way.
+        this.SIN_RATE = [0x00, 0x02, 0x08, 0x0a];
+        this.SIN_RANGE = [0x01, 0x03, 0x09, 0x0b];
+        this.RMP_RATE = [0x04, 0x06, 0x0c, 0x0e];
+        this.RMP_RANGE = [0x05, 0x07, 0x0d, 0x0f];
         this.POT0 = 0x10; this.POT1 = 0x11; this.POT2 = 0x12;
+        // Extended pots. Contiguous from 0x19, leaving 0x1c-0x1f for POT6-POT9.
+        this.POT_REGS = [0x10, 0x11, 0x12, 0x19, 0x1a, 0x1b];
         this.ADCL = 0x14; this.ADCR = 0x15;
         this.DACL = 0x16; this.DACR = 0x17;
         this.ADDR_PTR = 0x18;
@@ -67,6 +82,8 @@ class FV1Core {
         this.OP_EXP = 0x0C; this.OP_SOF = 0x0D; this.OP_AND = 0x0E;
         this.OP_OR = 0x0F; this.OP_XOR = 0x10; this.OP_SKP = 0x11;
         this.OP_WLDX = 0x12; this.OP_JAM = 0x13; this.OP_CHO = 0x14;
+        // Extended: the FV-1 assigns opcodes 0-20, so 21 up is unclaimed.
+        this.OP_RAND = 0x15;
         // WLDS and WLDR share opcode 0x12. The decoder rewrites the ramp form
         // to this synthetic opcode so the two never have to be told apart by
         // a flag bit inside an operand field.
@@ -157,11 +174,19 @@ class FV1Core {
 
     // `resetState` false swaps the program in without clearing delay memory, so
     // a reverb tail carries across a hot reload while the source is edited.
-    setProgram(bytes, resetState = true) {
+    //
+    // `extended` says the image was built with '#extended'. The 512 bytes carry
+    // no pragma, so it has to be told: the assembler knows, and the simulator
+    // passes it through. It widens the delay tank to 65536 words -- the only
+    // thing that cannot be read out of the instruction words themselves, since
+    // the extension only ever sets bits the FV-1 leaves at zero.
+    setProgram(bytes, resetState = true, extended = false) {
         if (!bytes || bytes.length < 512) {
             this.hasProgram = false;
             return false;
         }
+        this.extended = !!extended;
+        this.DELAY_MASK = extended ? this.DELAY_MASK_EXT : 0x7FFF;
         for (let i = 0; i < this.PROG_LEN; i++) {
             const o = i * 4;
             // Big-endian, matching generateMachineCode()
@@ -193,11 +218,21 @@ class FV1Core {
             case this.OP_WRA:
             case this.OP_WRAP:
                 this.iA[i] = (word >>> 21) & 0x7FF;      // S1.9 coefficient
-                this.iB[i] = (word >>> 5) & 0x7FFF;      // delay address
+                // 16 bits unconditionally: bit 20 is the extension, and an
+                // FV-1 program leaves it clear, so the same read serves both.
+                this.iB[i] = (word >>> 5) & 0xFFFF;      // delay address
                 break;
 
             case this.OP_RMPA:
                 this.iA[i] = (word >>> 21) & 0x7FF;
+                // Bit 5 is RMPAX: it reads ADDR_PTR as ACC[22:7] rather than
+                // ACC[23:8], which keeps the sign bit out of the address.
+                this.iB[i] = (word >>> 5) & 0x01;
+                break;
+
+            case this.OP_RAND:
+                this.iA[i] = (word >>> 16) & 0xFFFF;     // S1.14 amplitude
+                this.iB[i] = (word >>> 5) & 0x3F;        // destination register
                 break;
 
             case this.OP_RDAX:
@@ -236,25 +271,30 @@ class FV1Core {
                 // WLDS and WLDR share opcode 0x12. The LFO select field tells
                 // them apart: SIN0/SIN1 are 0b00/0b01 and RMP0/RMP1 are
                 // 0b10/0b11, so bit 30 is set only for the ramp form.
+                // The select is bit 29 with bit 31 above it, so 0-1 are the
+                // FV-1's pair and 2-3 the two '#extended' adds. Bit 31 is clear
+                // in every FV-1 program, so this read serves both.
                 if ((word >>> 30) & 0x01) {
                     this.iOp[i] = this.OP_WLDR;
-                    this.iA[i] = (word >>> 29) & 0x01;          // ramp 0 or 1
+                    this.iA[i] = ((word >>> 29) & 0x01) |
+                                 (((word >>> 31) & 0x01) << 1);  // ramp 0-3
                     this.iB[i] = (word >>> 13) & 0xFFFF;        // frequency
                     this.iC[i] = (word >>> 5) & 0x03;           // range code
                 } else {
-                    this.iA[i] = (word >>> 29) & 0x01;          // sin 0 or 1
+                    this.iA[i] = ((word >>> 29) & 0x01) |
+                                 (((word >>> 31) & 0x01) << 1);  // sin 0-3
                     this.iB[i] = (word >>> 20) & 0x1FF;         // frequency
                     this.iC[i] = (word >>> 5) & 0x7FFF;         // amplitude
                 }
                 break;
 
             case this.OP_JAM:
-                this.iA[i] = (word >>> 6) & 0x03;
+                this.iA[i] = (word >>> 6) & 0x07;        // ramp LFO, 3 bits
                 break;
 
             case this.OP_CHO:
                 this.iA[i] = (word >>> 30) & 0x03;       // type
-                this.iB[i] = (word >>> 21) & 0x03;       // LFO select
+                this.iB[i] = (word >>> 21) & 0x07;       // LFO select, 3 bits
                 this.iC[i] = (word >>> 24) & 0x3F;       // flags
                 this.iD[i] = (word >>> 5) & 0xFFFF;      // address / offset
                 break;
@@ -276,22 +316,40 @@ class FV1Core {
         for (let i = 0; i < 64; i++) this.regs[i] = 0;
 
         // LFO phase / position. Rate and range live in the register file so
-        // that programs can change them while running.
-        this.sinPhase = [0, 0];
-        this.rampPos = [0, 0];
+        // that programs can change them while running. Four of each: the FV-1
+        // uses the first two, '#extended' the rest.
+        this.sinPhase = [0, 0, 0, 0];
+        this.rampPos = [0, 0, 0, 0];
 
-        this.potSmooth = [0, 0, 0];
+        this.potSmooth = [0, 0, 0, 0, 0, 0];
+
+        // RAND's source. Deterministic and seeded here, so a reset gives the
+        // same noise again: the hardware draws from a ring oscillator, but a
+        // simulator you can run twice and compare is worth more than one that
+        // is unpredictable in the same way.
+        this.randState = 0x2545F491;
+    }
+
+    // xorshift32, then taken as a uniform S.23 over [-1, 1).
+    nextRandom() {
+        let x = this.randState;
+        x ^= x << 13; x >>>= 0;
+        x ^= x >>> 17;
+        x ^= x << 5;  x >>>= 0;
+        this.randState = x;
+        return (x >>> 8) - this.ONE;
     }
 
     // Pot inputs are heavily filtered on the real chip; smooth them so that
-    // moving a control does not produce zipper noise.
-    setPots(p0, p1, p2) {
-        const targets = [p0, p1, p2];
+    // moving a control does not produce zipper noise. Takes an array so the
+    // FV-1's three and the extended six are the same call.
+    setPots(pots) {
         const k = 0.002;
-        for (let i = 0; i < 3; i++) {
-            const target = Math.max(0, Math.min(1, targets[i]));
+        for (let i = 0; i < this.POT_REGS.length; i++) {
+            const raw = pots.length > i ? pots[i] : 0;
+            const target = Math.max(0, Math.min(1, raw));
             this.potSmooth[i] += (target - this.potSmooth[i]) * k;
-            this.regs[this.POT0 + i] = Math.floor(this.potSmooth[i] * this.ACC_MAX);
+            this.regs[this.POT_REGS[i]] = Math.floor(this.potSmooth[i] * this.ACC_MAX);
         }
     }
 
@@ -308,21 +366,28 @@ class FV1Core {
     // The app note's own example, wlds SIN0,5,16384, is documented as
     // "+/-4096 samples for a total delay requirement of 8193".
     sinAmpOf(i) {
-        const ka = Math.floor(this.regs[i === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] / 256) & 0x7FFF;
+        const ka = Math.floor(this.regs[this.SIN_RANGE[i]] / 256) & 0x7FFF;
         return ka / 4;
     }
 
     rampAmpOf(i) {
-        const code = this.regs[i === 0 ? this.RMP0_RANGE : this.RMP1_RANGE];
+        const code = this.regs[this.RMP_RANGE[i]];
         if (code === 3) return 512;
         if (code === 2) return 1024;
         if (code === 1) return 2048;
         return 4096;
     }
 
+    // An LFO select code carries the kind in bit 1 and the extension in bit 2,
+    // so 0-3 still mean what they did on the FV-1 and 4-7 are SIN2, SIN3, RMP2,
+    // RMP3. These two turn a code into a kind and an index into the arrays
+    // above.
+    lfoIsSine(sel) { return (sel & 0x02) === 0; }
+    lfoIndex(sel) { return (sel & 0x01) | ((sel >> 1) & 0x02); }
+
     updateLFOs() {
-        for (let i = 0; i < 2; i++) {
-            const rateReg = this.regs[i === 0 ? this.SIN0_RATE : this.SIN1_RATE];
+        for (let i = 0; i < 4; i++) {
+            const rateReg = this.regs[this.SIN_RATE[i]];
             // AN-0001: ACC[22:14] maps to the 9-bit frequency field, and
             // Kf = 2^17 * (2*pi*f / R). Rearranged, the stored value is the
             // angular step in radians per sample divided by 2^17, giving
@@ -333,8 +398,8 @@ class FV1Core {
             else if (this.sinPhase[i] < -Math.PI * 2) this.sinPhase[i] += Math.PI * 2;
         }
 
-        for (let i = 0; i < 2; i++) {
-            const rateReg = this.regs[i === 0 ? this.RMP0_RATE : this.RMP1_RATE];
+        for (let i = 0; i < 4; i++) {
+            const rateReg = this.regs[this.RMP_RATE[i]];
             const amp = this.rampAmpOf(i);
             // The ramp carries 1024 sub-sample steps per sample of range.
             const step = Math.floor(rateReg / 256) / 16 / 1024;
@@ -348,15 +413,16 @@ class FV1Core {
 
     // Returns the LFO output as a delay offset in samples (may be fractional)
     lfoOffset(sel, flags) {
-        if (sel === 0 || sel === 1) {
+        const n = this.lfoIndex(sel);
+        if (this.lfoIsSine(sel)) {
             const phase = (flags & this.CHO_COS)
-                ? this.sinPhase[sel] + Math.PI / 2
-                : this.sinPhase[sel];
-            let v = Math.sin(phase) * this.sinAmpOf(sel);
+                ? this.sinPhase[n] + Math.PI / 2
+                : this.sinPhase[n];
+            let v = Math.sin(phase) * this.sinAmpOf(n);
             if (flags & this.CHO_COMPA) v = -v;
             return v;
         }
-        const i = sel - 2;
+        const i = n;
         const amp = this.rampAmpOf(i);
         let pos = this.rampPos[i];
         if (flags & this.CHO_RPTR2) {
@@ -368,10 +434,11 @@ class FV1Core {
 
     // Normalised LFO value in S.23, used by CHO RDAL / CHO SOF
     lfoValue(sel, flags) {
-        if (sel === 0 || sel === 1) {
+        const n = this.lfoIndex(sel);
+        if (this.lfoIsSine(sel)) {
             const phase = (flags & this.CHO_COS)
-                ? this.sinPhase[sel] + Math.PI / 2
-                : this.sinPhase[sel];
+                ? this.sinPhase[n] + Math.PI / 2
+                : this.sinPhase[n];
             return Math.floor(Math.sin(phase) * this.ACC_MAX);
         }
         // A ramp is not normalised to full scale. Its accumulator counts the
@@ -381,8 +448,7 @@ class FV1Core {
         // program that turns a ramp into a triangle relies on the 0 to 0.5
         // figure ("cho rdal,rmp0 / sof 1,-0.25 / absa"), and the servo idiom
         // that steers a ramp to a delay position relies on the same scale.
-        const i = sel - 2;
-        return Math.floor(this.rampPos[i] * 1024);
+        return Math.floor(this.rampPos[n] * 1024);
     }
 
     // ---- delay RAM access ----------------------------------------------
@@ -404,8 +470,8 @@ class FV1Core {
     // the end of the delay and 1.0 when it is in the middle" - a triangle
     // across the ramp, not the ramp itself.
     xfadeCoef(sel) {
-        if (sel < 2) return 0;                  // NA is a ramp-only flag
-        const i = sel - 2;
+        if (this.lfoIsSine(sel)) return 0;      // NA is a ramp-only flag
+        const i = this.lfoIndex(sel);
         const amp = this.rampAmpOf(i);
         if (amp <= 0) return 0;
         const norm = this.rampPos[i] / amp;     // 0..1 across the ramp
@@ -524,10 +590,22 @@ class FV1Core {
                 break;
 
             case this.OP_RMPA: {
-                const addr = Math.floor(this.regs[this.ADDR_PTR] / 256) & this.DELAY_MASK;
+                // RMPA takes the address from ACC[23:8]; RMPAX (bit 5) from
+                // ACC[22:7], which leaves the accumulator's sign out of it so a
+                // positive accumulator can reach the whole 64k tank. The price
+                // is one bit of the interpolation fraction, which this model
+                // discards either way.
+                const scale = b ? 128 : 256;
+                const addr = Math.floor(this.regs[this.ADDR_PTR] / scale) & this.DELAY_MASK;
                 this.acc = this.clamp24(this.acc + this.mulS1_9(this.readDelay(addr), a));
                 break;
             }
+
+            case this.OP_RAND:
+                // REG = a uniform sample scaled by the coefficient, which is
+                // the amplitude. ACC is untouched.
+                this.regs[b] = this.mulS1_14(this.nextRandom(), a);
+                break;
 
             case this.OP_AND:
                 this.acc = this.clamp24(this.sext((this.acc & a) & 0xFFFFFF, 24));
@@ -584,27 +662,27 @@ class FV1Core {
             case this.OP_WLDX: {
                 // WLDS: load sine LFO rate and range into the registers.
                 // AN-0001: ACC[22:14] holds Kf and ACC[22:8] holds Ka.
-                const sel = a & 0x01;
-                this.regs[sel === 0 ? this.SIN0_RATE : this.SIN1_RATE] = (b & 0x1FF) * 16384;
-                this.regs[sel === 0 ? this.SIN0_RANGE : this.SIN1_RANGE] = (c & 0x7FFF) * 256;
+                const sel = a & 0x03;
+                this.regs[this.SIN_RATE[sel]] = (b & 0x1FF) * 16384;
+                this.regs[this.SIN_RANGE[sel]] = (c & 0x7FFF) * 256;
                 this.sinPhase[sel] = 0;
                 break;
             }
 
             case this.OP_WLDR: {
                 // WLDR: load ramp LFO rate and range into the registers
-                const sel = a & 0x01;
+                const sel = a & 0x03;
                 const rate = this.sext(b, 16);
                 let rateReg = (Math.abs(rate) & 0x7FFF) * 256;
                 if (rate < 0) rateReg = -rateReg;
-                this.regs[sel === 0 ? this.RMP0_RATE : this.RMP1_RATE] = rateReg;
-                this.regs[sel === 0 ? this.RMP0_RANGE : this.RMP1_RANGE] = c & 0x03;
+                this.regs[this.RMP_RATE[sel]] = rateReg;
+                this.regs[this.RMP_RANGE[sel]] = c & 0x03;
                 this.rampPos[sel] = 0;
                 break;
             }
 
             case this.OP_JAM:
-                this.rampPos[a & 0x01] = 0;
+                this.rampPos[this.lfoIndex(a)] = 0;
                 break;
 
             case this.OP_CHO: {
@@ -623,12 +701,15 @@ class FV1Core {
                     if (flags & this.CHO_NA) {
                         // Address used unmodified; the ramp supplies the
                         // crossfade coefficient instead of an offset.
-                        addr = arg & 0x7FFF;
+                        addr = arg & 0xFFFF;
                         coef = this.xfadeCoef(sel);
                     } else {
                         const off = this.lfoOffset(sel, flags);
                         const base = Math.floor(off);
-                        addr = (arg & 0x7FFF) + base;
+                        // 16 bits, unsigned: CHO's address field is already
+                        // wide enough for the extended tank, and an FV-1
+                        // program never sets the top bit.
+                        addr = (arg & 0xFFFF) + base;
                         coef = off - base;              // fractional bits
                     }
                     if (flags & this.CHO_COMPC) coef = 1 - coef;
@@ -654,9 +735,11 @@ class FV1Core {
         }
 
         // Every instruction that writes ACC latches PACC. SKP returns from
-        // inside the switch above, and WLDS, WLDR and JAM only touch the LFO
-        // registers, so none of them disturb it.
-        if (op !== this.OP_WLDX && op !== this.OP_WLDR && op !== this.OP_JAM) {
+        // inside the switch above; WLDS, WLDR and JAM only touch the LFO
+        // registers, and RAND only its destination register, so none of them
+        // disturb it.
+        if (op !== this.OP_WLDX && op !== this.OP_WLDR && op !== this.OP_JAM &&
+            op !== this.OP_RAND) {
             this.pacc = entryAcc;
         }
 

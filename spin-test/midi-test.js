@@ -71,7 +71,8 @@ async function run() {
     // 64/127 is not a whole percent: the core must get the CC value itself, not
     // the value the slider is able to display.
     check('CC50/51/52 set the pots at full 7-bit resolution',
-        await pots(), [1, 0, 64 / 127]);
+        (await pots()).slice(0, 3), [1, 0, 64 / 127]);
+
 
     await frame();
     check('sliders and readouts catch up on the next frame',
@@ -84,6 +85,16 @@ async function run() {
     check('the last message is logged',
         await page.evaluate(() => document.getElementById('midiLine').textContent),
         'CC52 → POT2 · 50%');
+
+    // POT3-POT5 exist only under '#extended'. Their sliders stay hidden for a
+    // stock build, but the CCs still track them, so a controller left where it
+    // was does not jump when an extended program is loaded.
+    await send(CH1, 53, 127);
+    await send(CH1, 54, 0);
+    await send(CH1, 55, 32);
+    check('CC53/54/55 reach POT3-POT5',
+        (await pots()).slice(3), [1, 0, 32 / 127]);
+    check('there are six pots in all', (await pots()).length, 6);
 
     console.log('\nBypass, CC102');
     await send(CH1, 102, 0);

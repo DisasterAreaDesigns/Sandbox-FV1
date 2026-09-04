@@ -905,6 +905,12 @@
                 <div class="sim-slider-row sim-pot-row" title="POT0"><label for="simPot0"><span id="simPot0Label">POT0</span></label><input type="range" id="simPot0" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot0Value" class="sim-value">50%</span></div>
                 <div class="sim-slider-row sim-pot-row" title="POT1"><label for="simPot1"><span id="simPot1Label">POT1</span></label><input type="range" id="simPot1" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot1Value" class="sim-value">50%</span></div>
                 <div class="sim-slider-row sim-pot-row" title="POT2"><label for="simPot2"><span id="simPot2Label">POT2</span></label><input type="range" id="simPot2" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot2Value" class="sim-value">50%</span></div>
+                <div class="sim-slider-row sim-pot-row" id="simPot3Row" style="display:none;" title="POT3"><label for="simPot3"><span id="simPot3Label">POT3</span></label><input type="range" id="simPot3" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot3Value" class="sim-value">50%</span></div>
+                <div class="sim-slider-row sim-pot-row" id="simPot4Row" style="display:none;" title="POT4"><label for="simPot4"><span id="simPot4Label">POT4</span></label><input type="range" id="simPot4" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot4Value" class="sim-value">50%</span></div>
+                <div class="sim-slider-row sim-pot-row" id="simPot5Row" style="display:none;" title="POT5"><label for="simPot5"><span id="simPot5Label">POT5</span></label><input type="range" id="simPot5" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot5Value" class="sim-value">50%</span></div>
+                <!-- Only an #extended program can read POT3-POT5, so the rows stay
+                     hidden until one is loaded. -->
+                <div id="simPotNote" class="sim-value" style="display:none;">POT3-POT5 need #extended</div>
             </div>
 
             <div class="flyout-section">

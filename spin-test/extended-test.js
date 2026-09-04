@@ -23,6 +23,8 @@ const os = require('node:os');
 const path = require('node:path');
 const cp = require('node:child_process');
 
+const FV1Core = require('../Assembler/fv1-emu.js');
+
 const FV1Assembler = (() => {
     const code = fs.readFileSync(path.join(__dirname, '../Assembler/assembler.js'), 'utf8');
     return new Function('debugLog', `${code}\nreturn FV1Assembler;`)(() => {});
@@ -257,6 +259,135 @@ test('the pragma is a line of its own, and may carry a comment', () => {
 
 test('line numbers survive the pragma being blanked', () => {
     assert.match(build(EXT + 'rda 99999, 1.0\n').errors, /line 2/);
+});
+
+// ---- running it -----------------------------------------------------------
+//
+// The assembler and the core have to agree, and only running the pair shows it:
+// a select bit read one way and written another passes both halves separately.
+
+/** Assemble and load into a core, with the extension flag the source implies. */
+function core(source) {
+    const r = build(source);
+    assert.ok(r.ok, r.errors);
+    const c = new FV1Core();
+    assert.ok(c.setProgram(r.asm.program, true, r.asm.extended), 'setProgram refused it');
+    return c;
+}
+
+/** Run `n` samples of a constant input and collect DACL. */
+function outputs(c, n, input = 0) {
+    const seen = [];
+    for (let i = 0; i < n; i++) {
+        c.run(input, input);
+        seen.push(c.getDACL());
+    }
+    return seen;
+}
+
+test('a delay past 32768 words needs the extended tank', () => {
+    const src = EXT + 'mem d 40000\nrdax adcl, 1.0\nwra d, 0\nrda d#, 1.0\nwrax dacl, 0\n';
+    const image = build(src).asm.program;
+
+    const wide = new FV1Core();
+    wide.setProgram(image, true, true);
+    wide.run(0.5, 0);                       // the impulse goes in on sample 0
+    for (let n = 1; n <= 40000; n++) wide.run(0, 0);
+    assert.ok(Math.abs(wide.getDACL() - 0.5) < 2e-3,
+        `expected the impulse back at 40000 samples, got ${wide.getDACL()}`);
+
+    // The same image on a 15 bit tank: 40000 wraps to 7232, so it cannot come
+    // back where it was written. This is the one thing the flag has to carry --
+    // everything else about the extension reads out of the instruction words.
+    const narrow = new FV1Core();
+    narrow.setProgram(image, true, false);
+    narrow.run(0.5, 0);
+    for (let n = 1; n <= 40000; n++) narrow.run(0, 0);
+    assert.ok(Math.abs(narrow.getDACL()) < 2e-3,
+        `a 15 bit tank should not deliver it, got ${narrow.getDACL()}`);
+});
+
+test('RMPAX reaches the whole tank from a positive accumulator', () => {
+    // RMPAX reads ADDR_PTR as ACC[22:7], so address 40000 is ACC = 40000 * 128
+    // = 5120000 -- inside the accumulator's positive range. RMPA's ACC[23:8]
+    // would need 10240000, which is past +1.0 and only writable as a negative
+    // number: that is the seam RMPAX exists to remove.
+    const marker = Math.floor(0x800000 / 2);
+    for (const [mnemonic, expected] of [['rmpax', 40000], ['rmpa', 20000]]) {
+        const c = core(EXT + `${mnemonic} 1.0\nwrax dacl, 0\n`);
+        // delayPtr is 0 on the first sample, so a cell written here is the cell
+        // the address names.
+        c.delay[expected] = c.compress(marker);
+        c.regs[c.ADDR_PTR] = 40000 * 128;
+        c.run(0, 0);
+        assert.ok(Math.abs(c.getDACL() - 0.5) < 0.01,
+            `${mnemonic} should have read address ${expected}, got ${c.getDACL()}`);
+    }
+});
+
+test('RAND fills a register without touching ACC', () => {
+    // The accumulator carries the input past a RAND and comes out unchanged.
+    const passthrough = core(EXT + 'rdax adcl, 1.0\nrand reg0, 1.0\nwrax dacl, 0\n');
+    for (const v of outputs(passthrough, 8, 0.5)) {
+        assert.ok(Math.abs(v - 0.5) < 1e-4, `RAND disturbed ACC: ${v}`);
+    }
+
+    const noise = outputs(core(EXT + 'rand reg0, 1.0\nrdax reg0, 1.0\nwrax dacl, 0\n'), 2000);
+    assert.ok(noise.every((v) => v >= -1 && v < 1), 'RAND left the full scale range');
+    assert.ok(new Set(noise).size > 1900, 'RAND repeated itself');
+    const mean = noise.reduce((a, b) => a + b, 0) / noise.length;
+    assert.ok(Math.abs(mean) < 0.05, `RAND is not centred: mean ${mean.toFixed(4)}`);
+
+    // The coefficient is the amplitude, so a dither stays a dither.
+    const dither = outputs(core(EXT + 'rand reg0, 0.002\nrdax reg0, 1.0\nwrax dacl, 0\n'), 500);
+    assert.ok(dither.every((v) => Math.abs(v) <= 0.0021),
+        `the coefficient did not scale it: peak ${Math.max(...dither.map(Math.abs))}`);
+
+    // Deterministic: two fresh cores give the same sequence, so a run can be
+    // compared against a previous one.
+    assert.deepEqual(
+        outputs(core(EXT + 'rand reg0, 1.0\nrdax reg0, 1.0\nwrax dacl, 0\n'), 16),
+        noise.slice(0, 16));
+});
+
+test('an LFO above the FV-1\'s four runs, and only that one', () => {
+    const sweep = (read) => outputs(core(
+        EXT + `skp run, 1\nwlds sin2, 100, 16384\ncho rdal, ${read}\nwrax dacl, 0\n`), 12000);
+    // At rate 100 the phase advances 100/131072 radians a sample, so a whole
+    // cycle takes about 8200 -- long enough to see both halves of it.
+
+    const own = sweep('sin2');
+    assert.ok(Math.max(...own) > 0.9 && Math.min(...own) < -0.9,
+        `SIN2 did not sweep: ${Math.min(...own).toFixed(3)} to ${Math.max(...own).toFixed(3)}`);
+
+    // Loading SIN2 must not have written SIN0's registers -- they are eight
+    // apart in the file, and reading the wrong one is the mistake worth
+    // catching here.
+    assert.ok(sweep('sin0').every((v) => v === 0), 'SIN2 drove SIN0');
+});
+
+test('a ramp above the FV-1\'s two runs on its own registers', () => {
+    const ramp = (read) => outputs(core(
+        EXT + `skp run, 1\nwldr rmp3, 16384, 4096\ncho rdal, ${read}\nwrax dacl, 0\n`), 3000);
+    assert.ok(Math.max(...ramp('rmp3')) > 0.4, 'RMP3 did not run');
+    assert.ok(ramp('rmp0').every((v) => v === 0), 'RMP3 drove RMP0');
+});
+
+test('POT3 to POT5 reach the core', () => {
+    for (const [name, index] of [['pot3', 3], ['pot4', 4], ['pot5', 5]]) {
+        const c = core(EXT + `rdax ${name}, 1.0\nwrax dacl, 0\n`);
+        const pots = [0, 0, 0, 0, 0, 0];
+        pots[index] = 1;
+        // The pot filter is a one-pole at k = 0.002, so give it time to settle.
+        for (let n = 0; n < 6000; n++) { c.setPots(pots); c.run(0, 0); }
+        assert.ok(c.getDACL() > 0.99, `${name} read ${c.getDACL()}`);
+
+        const other = new FV1Core();
+        other.setProgram(build(EXT + `rdax ${name}, 1.0\nwrax dacl, 0\n`).asm.program, true, true);
+        for (let n = 0; n < 6000; n++) { other.setPots([1, 1, 1, 0, 0, 0]); other.run(0, 0); }
+        assert.ok(Math.abs(other.getDACL()) < 0.01,
+            `${name} picked up one of POT0-POT2: ${other.getDACL()}`);
+    }
 });
 
 // ---- the reference --------------------------------------------------------
