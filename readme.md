@@ -43,7 +43,7 @@ The **EXTENDED** section of the instruction reference and a matching section of 
 
 **An FV-1 does not implement any of this.**  It will not refuse an extended image; it will run it as something else.  Since the Sandbox pedal has an FV-1 in it, **Download to Hardware** asks for confirmation before writing an extended build.
 
-The reference implementation is **asfv1-extended**, a fork of [asfv1](https://github.com/ndf-zz/asfv1) carrying the same extension.  It is not vendored here - asfv1 is GPL-3 and this repo is MIT - but `npm run test:extended` assembles its whole test suite with both and compares the images when a copy is reachable - set `ASFV1_EXTENDED` to the path of its `asfv1.py`.
+The reference implementation is **asfv1-extended**, a fork of [asfv1](https://github.com/ndf-zz/asfv1) carrying the same extension.  It is vendored in `ASFV1 Source/` alongside upstream, so `npm run test:extended` assembles its whole test suite with both and compares the images without anything else installed.  Set `ASFV1_EXTENDED` to point at a working checkout instead, which is what you want while changing the fork itself.
 
 ## Running the Assembler Locally
 The web app needs to be served over http - opening `Assembler/index.html` directly as a `file://` page will not work.  Browsers block the audio engine the simulator depends on from `file://` origins, and the directory and serial access used to talk to the hardware need a secure context too.  `localhost` counts as secure, so any static file server will do:
@@ -57,7 +57,7 @@ Then open <http://localhost:8000> in Chrome or Edge.  If you prefer Node, `npx s
 Chrome or Edge are required for programming hardware and selecting folders, since Firefox and Safari do not implement the File System Access and Web Serial APIs.  The simulator itself works in any browser with AudioWorklet support, and its MIDI control works in Chrome, Edge and Firefox - Safari has no Web MIDI.
 
 ## What's In This Repo?
-* **ASFV1 Source:**  copy of the Python source for asfv1
+* **ASFV1 Source:**  copies of the Python source for asfv1 and for asfv1-extended, the fork carrying the extended instruction set
 * **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`) with MIDI control (`fv1-midi.js`)
 * **Firmware**  CircuitPython code for the RP2040 Zero program module
 * **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler: `npm run test:roundtrip` for the assembler and simulator as a pair, `npm run test:emu` for the DSP core, `npm run test:extended` for the extended instruction set, and `npm run test:midi` for the simulator's MIDI control

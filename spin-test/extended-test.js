@@ -8,10 +8,9 @@
 // "it assembled", because each bug worth catching here produces code that runs
 // and is quietly wrong: an address one bit short, a pot register off by one.
 //
-// If a copy of asfv1-extended is reachable -- ASFV1_EXTENDED, or the checkout
-// this project is developed alongside -- every source below is also assembled
-// with it and the images compared. That is the real check; the assertions are
-// what runs when it is not installed.
+// Every source below is also assembled with asfv1-extended itself and the
+// images compared. That is the real check; the assertions are what runs if the
+// reference is ever missing.
 //
 // Not ported: the '$' spelling of the MEM midpoint suffix. asfv1-extended
 // accepts it beside '^'; nothing in spin-test/files uses it, and '$' is this
@@ -32,10 +31,11 @@ const FV1Assembler = (() => {
 
 const EXT = '#extended\n';
 
-// Where a reference copy might be. Nothing is vendored: asfv1 is GPL-3 and this
-// repo is MIT, so the fork stays a checkout you point at.
-const REFERENCE = process.env.ASFV1_EXTENDED || path.join(os.homedir(),
-    'Library/CloudStorage/Dropbox/Arduino/asfv1-extended/asfv1.py');
+// The vendored copy, so the suite is self-contained. ASFV1_EXTENDED points it
+// at a working checkout instead, which is what you want while changing the fork
+// itself.
+const REFERENCE = process.env.ASFV1_EXTENDED ||
+    path.join(__dirname, '../ASFV1 Source/asfv1-extended.py');
 const haveReference = fs.existsSync(REFERENCE);
 
 // ---- assembling -----------------------------------------------------------
