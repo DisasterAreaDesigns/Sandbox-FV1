@@ -50,7 +50,7 @@ function buildWorkletSource() {
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
         '            if (d.type === "program") {',
-        '                this.core.setProgram(new Uint8Array(d.bytes));',
+        '                this.core.setProgram(new Uint8Array(d.bytes), d.reset !== false);',
         '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
         '            } else if (d.type === "pots") {',
         '                this.pots = d.values;',
@@ -153,6 +153,11 @@ async function simInitEngine() {
     simDryGain = dryGain;
     simAnalyser = analyser;
     simApplyLevels();
+    // The worklet's core starts at its own 0.5 default, so a pot moved before
+    // the engine existed -- by a slider, or by MIDI -- would otherwise be shown
+    // in one place and running in another. A crystal change rebuilds the engine
+    // and hits the same case.
+    simPushPots();
 }
 
 // Drop the engine so the next Play press starts from scratch.
@@ -169,8 +174,15 @@ function simTeardownEngine() {
     simAnalyser = null;
 }
 
+// simRunning is only set once the whole start has succeeded, so it cannot
+// guard against a second press arriving during the two awaits below. Without a
+// separate flag, a double-click builds two engines and leaves the first
+// AudioContext open and unreachable; Chrome allows a document six of them.
+let simStarting = false;
+
 async function simStart() {
-    if (simRunning) return;
+    if (simRunning || simStarting) return;
+    simStarting = true;
     try {
         // Gate on the node, not the context: a half-built engine must rebuild.
         if (!simNode) await simInitEngine();
@@ -183,11 +195,19 @@ async function simStart() {
         // load is a dead end -- simReportRate below would otherwise paint over
         // the warning with a cheerful 'Running at'.
         if (!simLoadProgram()) {
-            simStop();
+            simAbortStart();
             return;
         }
 
-        await simConnectSource();
+        // The source reports its own failure -- no file chosen, microphone
+        // denied -- and that message has to survive. Carrying on would set the
+        // transport to Stop with nothing playing and let simReportRate() paint
+        // over the explanation.
+        if (!await simConnectSource()) {
+            simAbortStart();
+            return;
+        }
+
         simRunning = true;
         simUpdateTransport();
         simReportRate();
@@ -197,7 +217,19 @@ async function simStart() {
         simUpdateTransport();
         simStatus('Could not start: ' + err.message, 'error');
         console.error('[fv1-sim]', err);
+    } finally {
+        simStarting = false;
     }
+}
+
+// Unwind a start that resumed the context but could not finish. simStop() is no
+// use here: simRunning is still false, so it returns immediately -- and it would
+// replace the status line explaining why the start failed.
+function simAbortStart() {
+    simDisconnectSource();
+    if (simCtx) simCtx.suspend();
+    simRunning = false;
+    simUpdateTransport();
 }
 
 function simStop() {
@@ -233,7 +265,11 @@ function simPanic() {
 // Pull the current build out of the assembler and hand it to the worklet.
 // Safe to call before the engine exists: the bytes are cached and pushed
 // again once the worklet is up.
-function simLoadProgram() {
+//
+// `opts.reset` false swaps the program in and leaves delay memory alone, so a
+// tail keeps ringing across a re-assemble. It defaults to true: a cold start
+// wants a clean tank.
+function simLoadProgram(opts) {
     if (typeof assembledData !== 'undefined' && assembledData) {
         simLoadedProgram = new Uint8Array(assembledData);
     }
@@ -245,7 +281,8 @@ function simLoadProgram() {
     if (simNode) {
         simNode.port.postMessage({
             type: 'program',
-            bytes: simLoadedProgram.buffer.slice(0)
+            bytes: simLoadedProgram.buffer.slice(0),
+            reset: !opts || opts.reset !== false
         });
     }
     simSetProgramState(simNode
@@ -303,9 +340,13 @@ function simSourceType() {
     return el ? el.value : 'tone';
 }
 
+// Returns whether a source is actually connected. simStart() needs to know:
+// the failures here are ordinary -- no file chosen, microphone denied -- and
+// each leaves a message on the status line that must not be reported as a
+// successful start.
 async function simConnectSource() {
     simDisconnectSource();
-    if (!simCtx || !simInputGain || !simDryGain) return;
+    if (!simCtx || !simInputGain || !simDryGain) return false;
     const type = simSourceType();
 
     if (type === 'tone' || type === 'saw' || type === 'square') {
@@ -341,7 +382,7 @@ async function simConnectSource() {
     } else if (type === 'file') {
         if (!simFileBuffer) {
             simStatus('Choose an audio file first', 'warn');
-            return;
+            return false;
         }
         const node = simCtx.createBufferSource();
         node.buffer = simFileBuffer;
@@ -360,14 +401,14 @@ async function simConnectSource() {
             simSource = simCtx.createMediaStreamSource(simStream);
         } catch (err) {
             simStatus('Microphone access denied or unavailable', 'error');
-            return;
+            return false;
         }
     }
 
-    if (simSource) {
-        simSource.connect(simInputGain);
-        simSource.connect(simDryGain);
-    }
+    if (!simSource) return false;
+    simSource.connect(simInputGain);
+    simSource.connect(simDryGain);
+    return true;
 }
 
 function simDisconnectSource() {
@@ -693,11 +734,15 @@ function simHookAssemble() {
         const result = original.apply(this, arguments);
         simRefreshControlNames();
         if (typeof assembledData !== 'undefined' && assembledData) {
-            simLoadProgram();
+            // The checkbox chooses what happens to the state the running program
+            // built up, not whether the new build is loaded -- an edit always
+            // takes effect. Ticked clears delay memory the way a power cycle
+            // would; unticked hands the new program the tank the old one left,
+            // so a reverb tail survives the edit. Loading resets the core by
+            // itself, so this has to travel with the program rather than as a
+            // separate message afterwards.
             const auto = document.getElementById('simAutoReload');
-            if (simRunning && simNode && auto && auto.checked) {
-                simNode.port.postMessage({type: 'reset'});
-            }
+            simLoadProgram({reset: !auto || auto.checked});
         }
         return result;
     };

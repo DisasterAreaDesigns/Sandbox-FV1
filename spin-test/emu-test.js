@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const FV1Core = require('../Assembler/fv1-emu.js');
 
 const OP = {
+    RDA: 0x00, WRA: 0x02,
     RDAX: 0x04, RDFX: 0x05, WRAX: 0x06, WRHX: 0x07, WRLX: 0x08,
     MULX: 0x0A, LOG: 0x0B, EXP: 0x0C, SOF: 0x0D, SKP: 0x11,
     WLDX: 0x12, JAM: 0x13,
@@ -26,7 +27,13 @@ const S_10 = (v) => Math.round(v * 1024) & 0x7FF;
 
 const S1_14 = (v) => Math.round(v * 16384) & 0xFFFF;
 
-function load(program) {
+/** RDA, WRA and WRAP: an 11-bit S1.9 coefficient and a 15-bit delay address. */
+const wordDel = (coef, addr, op) =>
+    (((coef & 0x7FF) << 21) | ((addr & 0x7FFF) << 5) | (op & 0x1F)) >>> 0;
+
+const S1_9 = (v) => Math.round(v * 512) & 0x7FF;
+
+function image(program) {
     const bytes = new Uint8Array(512);
     for (let i = 0; i < 128; i++) {
         const w = program[i] ?? word(0, 0, OP.SKP);        // skp 0,0 is the nop
@@ -35,8 +42,12 @@ function load(program) {
         bytes[i * 4 + 2] = (w >>> 8) & 0xFF;
         bytes[i * 4 + 3] = w & 0xFF;
     }
+    return bytes;
+}
+
+function load(program) {
     const core = new FV1Core();
-    assert.ok(core.setProgram(bytes), 'setProgram rejected the program');
+    assert.ok(core.setProgram(image(program)), 'setProgram rejected the program');
     return core;
 }
 
@@ -200,6 +211,65 @@ test('the ADC input rounds rather than truncating', () => {
     assert.ok(worst <= LSB, `worst error ${(worst / LSB).toFixed(2)} LSB`);
     const bias = Math.abs(sum / samples) / LSB;
     assert.ok(bias < 0.1, `mean error ${bias.toFixed(3)} LSB: truncation biases, rounding should not`);
+});
+
+// -------------------------------------------------------------------------
+// Delay memory
+// -------------------------------------------------------------------------
+
+test('a full-scale negative sample survives delay memory', () => {
+    // clamp24() returns exactly -0x800000 on every negative overflow, so this is
+    // the value a hard-driven delay or reverb writes constantly. Masking the
+    // magnitude with 0x7FFFFF turned it into zero, which reads as a dropout
+    // rather than a clip.
+    const core = new FV1Core();
+    const roundTrip = (v) => core.decompress(core.compress(v));
+
+    assert.equal(roundTrip(-0x800000), -0x800000, 'full-scale negative was lost');
+    // The 9-bit mantissa is the only loss anywhere else: better than 1 part
+    // in 256 for every magnitude, and exact where the mantissa fits.
+    for (const v of [0, 1, -1, 0x400000, -0x400000, 0x7FFFFF]) {
+        const back = roundTrip(v);
+        assert.ok(Math.abs(back - v) <= Math.abs(v) / 256,
+            `${v} came back as ${back}`);
+    }
+});
+
+test('a program can be swapped in without clearing delay memory', () => {
+    // What the simulator's "Reset on assemble" checkbox chooses. Unticked, a
+    // re-assemble takes effect but the tail already in the tank keeps ringing;
+    // the core used to clear it either way, so the checkbox did nothing.
+    //
+    // A five sample delay: the input is written at the head and read back five
+    // samples later. The reload lands while the impulse is still in flight.
+    const bytes = image([
+        word(S1_14(1.0), REG.ADCL, OP.RDAX),
+        wordDel(S1_9(0), 0, OP.WRA),        // head, and leave ACC at zero
+        wordDel(S1_9(1.0), 5, OP.RDA),      // tail, five samples back
+        word(0, REG.DACL, OP.WRAX),
+    ]);
+
+    const afterReload = (resetState) => {
+        const core = new FV1Core();
+        assert.ok(core.setProgram(bytes));
+        core.run(0.5, 0);                            // the impulse goes in
+        for (let n = 1; n < 3; n++) core.run(0, 0);
+        core.setProgram(bytes, resetState);          // re-assemble mid-flight
+        const seen = [];
+        for (let n = 3; n < 8; n++) {
+            core.run(0, 0);
+            seen.push(core.getDACL());
+        }
+        return seen;
+    };
+
+    const kept = afterReload(false);
+    assert.ok(kept.some((v) => Math.abs(v - 0.5) < 2e-3),
+        `the tail should have survived: ${kept.map((v) => v.toFixed(3))}`);
+
+    const cleared = afterReload(true);
+    assert.ok(cleared.every((v) => Math.abs(v) < 2e-3),
+        `a resetting load should have emptied the tank: ${cleared.map((v) => v.toFixed(3))}`);
 });
 
 let failed = 0;

@@ -127,7 +127,13 @@ class FV1Core {
     // pick up their characteristic grain -- modelling it matters.
 
     compress(v) {
-        const mag = Math.abs(v) & 0x7FFFFF;
+        // Clamp the magnitude rather than masking it. `& 0x7FFFFF` turned the
+        // one value clamp24() produces on every negative overflow, -0x800000,
+        // into a magnitude of zero, so a negatively clipped peak was stored as
+        // silence instead of -1.0 -- an audible dropout wherever a delay line
+        // or reverb tank is driven hard. 0x800000 still encodes cleanly, as
+        // exponent 7 with a mantissa of 256.
+        const mag = Math.min(Math.abs(v), this.ONE);
         if (mag === 0) return 0;
         // Shift so the mantissa occupies 9 bits with the MSB set.
         const bitLength = 32 - Math.clz32(mag);
@@ -149,7 +155,9 @@ class FV1Core {
 
     // ---- program loading ----------------------------------------------
 
-    setProgram(bytes) {
+    // `resetState` false swaps the program in without clearing delay memory, so
+    // a reverb tail carries across a hot reload while the source is edited.
+    setProgram(bytes, resetState = true) {
         if (!bytes || bytes.length < 512) {
             this.hasProgram = false;
             return false;
@@ -162,7 +170,14 @@ class FV1Core {
             this.decodeInstruction(i, word);
         }
         this.hasProgram = true;
-        this.reset();
+        if (resetState) {
+            this.reset();
+        } else {
+            // Keep the delay memory, but re-arm firstRun: the incoming program's
+            // SKP RUN setup block has never executed, and would otherwise be
+            // skipped for the rest of the session.
+            this.firstRun = true;
+        }
         return true;
     }
 
