@@ -28,7 +28,7 @@
                         <text x="32" y="40" text-anchor="middle" fill="white" font-family="League Spartan" font-size="20" font-weight="bold">FV1</text>
                     </svg>
                 </a>
-                <span class="build">build 19</span>
+                <span class="build">build 20</span>
             </div>
         </div>
 
@@ -999,8 +999,10 @@
                 <div class="sim-slider-row sim-pot-row" id="simPot4Row" style="display:none;" title="POT4"><label for="simPot4"><span id="simPot4Label">POT4</span></label><input type="range" id="simPot4" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot4Value" class="sim-value">50%</span></div>
                 <div class="sim-slider-row sim-pot-row" id="simPot5Row" style="display:none;" title="POT5"><label for="simPot5"><span id="simPot5Label">POT5</span></label><input type="range" id="simPot5" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot5Value" class="sim-value">50%</span></div>
                 <!-- Only an #extended program can read POT3-POT5, so the rows stay
-                     hidden until one is loaded. -->
-                <div id="simPotNote" class="sim-value" style="display:none;">POT3-POT5 need #extended</div>
+                     hidden until one is loaded. Three sliders appearing out of
+                     nowhere wants a word of explanation beside them; three
+                     sliders not being there is just an FV-1, and needs none. -->
+                <div id="simPotNote" class="sim-note" style="display:none;">Extended set active: POT3-POT5, and 65536 words of delay</div>
             </div>
 
             <div class="flyout-section">

@@ -1570,6 +1570,16 @@ body.dark-mode .opcodes-notes {
 /* A pot the program has named reads as its own word, not a register. */
 .sim-renamed { font-weight: 600; }
 
+/* The line under the pots that says why three more of them turned up. */
+.sim-note {
+    font-size: 0.8em;
+    margin: 4px 0 0;
+    padding: 4px 6px;
+    border-radius: 3px;
+    background: rgba(127, 127, 127, 0.12);
+    color: var(--flyout-text-muted, #666);
+}
+
 .sim-slider-row input[type="range"] { flex: 1; min-width: 0; margin: 0; }
 
 /* The readout is the widest it ever gets ("-40 dB", "8000 Hz", "100%"), so the
