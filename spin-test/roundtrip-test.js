@@ -190,6 +190,56 @@ test('a tie rounds to even, as asfv1 does', () => {
 });
 
 // -------------------------------------------------------------------------
+// Literals and operand encoding. These are checked against asfv1's output for
+// the same source: assembling the whole spin-test/files corpus with both and
+// diffing the images is what turned each of them up.
+// -------------------------------------------------------------------------
+
+/** The first assembled instruction word. */
+function firstWord(source) {
+    const asm = new FV1Assembler(source, { clamp: true, spinReals: true });
+    asm.parse();
+    assert.equal(asm.errors.length, 0, `unexpected error: ${asm.errors[0]}`);
+    asm.generateMachineCode();
+    const b = asm.program;
+    return ((b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0) >>> 0;
+}
+
+test('a hex literal containing E is a number, not an exponent', () => {
+    // 'e' is a hex digit as well as a float exponent marker. Testing for it
+    // before the radix prefix sent 0x0E down the float path, where parseFloat
+    // stops at the 'x' and returns 0 -- silently, with no error. Real programs
+    // in spin-test/files hit this: rom_chor_rev.spn's `cho RDA,SIN0,0x0E,...`
+    // lost its flags and afx_reverse_delay.spn's `or 0xFFFE00` became `or 0`.
+    assert.equal(firstWord('or 0xFFFE00\n'), firstWord('or $FFFE00\n'));
+    assert.equal(firstWord('and 0x0E0000\n') >>> 8, 0x0E0000);
+    assert.equal(firstWord('cho rda,sin0,0x0E,100\n') >>> 24, 0x0E);
+    // The forms that already worked must keep working.
+    assert.equal(firstWord('and 0x0F0000\n') >>> 8, 0x0F0000);
+    assert.equal(firstWord('and %1111_0000_0000_0000_0000_0000\n') >>> 8, 0xF00000);
+});
+
+test('a malformed numeric literal is an error, not a zero', () => {
+    // The scanner splits on the minus, so `1e-1` reaches parseFloat as `1e` and
+    // used to come back as a zero coefficient with nothing said. asfv1 rejects
+    // the exponent form too; the point is that it is rejected rather than
+    // silently mis-assembled.
+    for (const src of ['and 0xZZ\n', 'rdax adcl, 1e-1\n']) {
+        const asm = new FV1Assembler(src, { clamp: true, spinReals: true });
+        asm.parse();
+        assert.ok(asm.errors.length > 0, `${src.trim()} assembled silently`);
+    }
+});
+
+test('an omitted CHO flags field means no flags', () => {
+    // `cho rda,rmp0,,addr` is the second half of the AN-0001 interpolation pair
+    // and appears in thirteen of the corpus programs. A blank field used to
+    // return REG for a ramp LFO, setting a bit the program never wrote and
+    // disagreeing with an explicit 0 on the same instruction.
+    assert.equal(firstWord('cho rda,rmp0,,100\n'), firstWord('cho rda,rmp0,0,100\n'));
+    assert.equal(firstWord('cho rda,sin0,,100\n'), firstWord('cho rda,sin0,0,100\n'));
+    assert.equal(firstWord('cho rda,rmp0,,100\n') >>> 24, 0, 'flags should be clear');
+});
 
 let failed = 0;
 for (const [name, fn] of tests) {

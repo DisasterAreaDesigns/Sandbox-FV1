@@ -329,9 +329,32 @@ class FV1Assembler {
                     value
                 };
             } else if (/^-?\d/.test(text) || text.startsWith('.')) {
-                // Number (int or float) - handle negative numbers and decimals starting with .
-                if (text.includes('.') || text.toLowerCase().includes('e') || text.startsWith('.')) {
-                    const value = parseFloat(text) || 0;
+                // Number (int or float) - handle negative numbers and decimals
+                // starting with .
+                //
+                // The radix prefix has to be recognised before the float test:
+                // 'e' is a hex digit as well as an exponent marker, so 0x0E and
+                // 0xFFFE00 would otherwise be read as floats and parseFloat()
+                // would stop at the 'x' and hand back 0, with no error. That is
+                // silent wrong code -- `cho rda,SIN0,0x0E,addr` lost its flags
+                // and `or 0xFFFE00` became `or 0`.
+                const radix = /^-?0[xb]/i.test(text);
+                if (!radix &&
+                    (text.includes('.') || text.toLowerCase().includes('e') || text.startsWith('.'))) {
+                    // Check the shape rather than trusting parseFloat, which
+                    // parses as far as it can and stops. `1e-1` tokenises as
+                    // `1e`, `-`, `1` -- the minus is an operator -- and
+                    // parseFloat('1e') is 1, so the expression quietly came out
+                    // as zero. asfv1 rejects the exponent form as well; the
+                    // point is that it is rejected rather than mis-assembled.
+                    // A trailing or leading dot stays legal: `1.` and `.999`
+                    // both appear in real SpinASM source.
+                    let value = 0;
+                    if (/^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text)) {
+                        value = parseFloat(text);
+                    } else {
+                        this.error(`Invalid numeric literal ${text}`, this.sline);
+                    }
                     this.sym = {
                         type: 'FLOAT',
                         text,
@@ -348,13 +371,20 @@ class FV1Assembler {
                         value
                     };
                 } else {
+                    // Underscores group digits, as they already do after $ and %.
+                    const digits = text.replace(/_/g, '');
                     let value = 0;
-                    if (text.startsWith('0x')) {
-                        value = parseInt(text, 16) || 0;
-                    } else if (text.startsWith('0b')) {
-                        value = parseInt(text.substring(2), 2) || 0;
+                    if (/^-?0x/i.test(digits)) {
+                        value = parseInt(digits, 16);
+                    } else if (/^-?0b/i.test(digits)) {
+                        value = parseInt(digits.replace(/0b/i, ''), 2);
                     } else {
-                        value = parseInt(text, 10) || 0;
+                        value = parseInt(digits, 10);
+                    }
+                    // Say so rather than quietly assembling a zero.
+                    if (Number.isNaN(value)) {
+                        this.error(`Invalid numeric literal ${text}`, this.sline);
+                        value = 0;
                     }
                     this.sym = {
                         type: 'INTEGER',
@@ -1244,10 +1274,13 @@ class FV1Assembler {
     }
 
     parseChoFlags(lfo) {
-        // Handle empty flags (just comma with nothing after)
+        // An omitted flags field means no flags. It used to return REG for a
+        // ramp LFO, which set a bit the program never wrote and disagreed with
+        // an explicit `,0,` on the same instruction. The second half of the
+        // AN-0001 interpolation pair is written `cho rda,rmp0,,addr` and has to
+        // assemble to what SpinASM and asfv1 both produce.
         if (this.sym.type === 'OPERATOR' && this.sym.text === ',') {
-            // Empty flags, return default
-            return lfo & 0x02 ? 0x02 : 0x00; // Default flags based on LFO type
+            return 0;
         }
 
         let flags = Math.floor(this.parseExpression());
