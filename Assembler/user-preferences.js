@@ -7,7 +7,13 @@ class UserPreferences {
             editorHeight: false,        // Large editor window
             darkMode: 'system',        // Dark mode: 'dark', 'light', or 'system'
             minimap: false,            // Show editor mini-map
-            debugMode: false           // Show full build results
+            debugMode: false,          // Show full build results
+
+            // Programming destination. Remembered because it is a property of
+            // the bench, not of the file being edited: the same board is wired
+            // to the same slot from one session to the next.
+            slotMode: 'manual',        // 'manual' or 'auto'
+            slotFilename: '3.hex'      // the manual pick, kept under auto
         };
     }
 
@@ -19,7 +25,10 @@ class UserPreferences {
                 editorHeight: document.getElementById('editorHeightToggle')?.checked || false,
                 darkMode: this.getCurrentDarkModeSetting(),
                 minimap: document.getElementById('minimapToggle')?.checked || false,
-                debugMode: document.getElementById('debugToggle')?.checked || false
+                debugMode: document.getElementById('debugToggle')?.checked || false,
+                slotMode: typeof slotMode !== 'undefined' ? slotMode : 'manual',
+                slotFilename: (typeof selectedFilename !== 'undefined' && selectedFilename)
+                    ? selectedFilename : '3.hex'
             };
             
             localStorage.setItem(this.storageKey, JSON.stringify(currentPrefs));
@@ -51,6 +60,12 @@ class UserPreferences {
     apply() {
         const prefs = this.load();
         
+        // The slot buttons are static markup and are already there, so restore
+        // the slot directly. requestAnimationFrame never fires in a background
+        // tab, and a remembered programming destination that only comes back
+        // if the page happened to be on screen would be worse than none.
+        this.applySlot(prefs);
+
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             this.applyEditorOptions(prefs);
@@ -107,6 +122,24 @@ class UserPreferences {
                 }
             }
         }
+    }
+
+    // Restore the programming destination. The grid button is clicked rather
+    // than set directly, so the label, the button states and the status line
+    // all follow the one code path they follow when a person clicks it.
+    applySlot(prefs) {
+        if (typeof selectFilename === 'function') {
+            const manual = document.querySelector(
+                '.filename-btn[data-filename="' + prefs.slotFilename + '"]');
+            if (manual) selectFilename(manual);
+
+            if (prefs.slotMode === 'auto') {
+                const auto = document.querySelector('.filename-btn[data-filename="auto"]');
+                if (auto) selectFilename(auto);
+            }
+        }
+        // From here on a slot change is the user's, and worth remembering.
+        if (typeof slotPrefsLoaded !== 'undefined') slotPrefsLoaded = true;
     }
 
     // Clear all saved preferences

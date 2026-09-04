@@ -46,6 +46,7 @@ function buildWorkletSource() {
         '        this.peakL = 0;',
         '        this.peakR = 0;',
         '        this.frames = 0;',
+        '        this.ledSum = [0, 0];',
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
         '            if (d.type === "program") {',
@@ -77,12 +78,19 @@ function buildWorkletSource() {
         '            const ar = Math.abs(r);',
         '            if (al > this.peakL) this.peakL = al;',
         '            if (ar > this.peakR) this.peakR = ar;',
+        '            this.ledSum[0] += this.core.getLED(0);',
+        '            this.ledSum[1] += this.core.getLED(1);',
         '        }',
         '        this.frames += outL.length;',
         '        if (this.frames >= 2048) {',
-        '            this.port.postMessage({type: "level", peak: [this.peakL, this.peakR]});',
+        '            this.port.postMessage({type: "level",',
+        '                peak: [this.peakL, this.peakR],',
+        '                led: [this.ledSum[0] / this.frames,',
+        '                      this.ledSum[1] / this.frames]});',
         '            this.peakL = 0;',
         '            this.peakR = 0;',
+        '            this.ledSum[0] = 0;',
+        '            this.ledSum[1] = 0;',
         '            this.frames = 0;',
         '        }',
         '        return true;',
@@ -129,7 +137,10 @@ async function simInitEngine() {
     }
 
     node.port.onmessage = (e) => {
-        if (e.data.type === 'level') simUpdateMeters(e.data.peak);
+        if (e.data.type === 'level') {
+            simUpdateMeters(e.data.peak);
+            simUpdateLEDs(e.data.led);
+        }
     };
 
     const inputGain = ctx.createGain();
@@ -233,6 +244,7 @@ function simStop() {
     simRunning = false;
     simUpdateTransport();
     simUpdateMeters([0, 0]);
+    simUpdateLEDs([0, 0]);
     simStatus('Stopped', '');
 }
 
@@ -648,13 +660,19 @@ function simToggleBypass() {
 //
 //     ; #POT0 Delay time
 //     ; #POT1 Feedback
+//     ; #LED1 Tempo
 //
 // The tag is read from the comment portion of a line, so it can never collide
 // with code, and the assembler ignores it because it is inside a comment. A pot
-// with no tag keeps its hardware name.
+// or lamp with no tag keeps its hardware name.
+//
+// The lamps are LED1 and LED2 rather than LED0 and LED1: the pots are numbered
+// after the registers they read, and the lamps are not -- REG30 and REG31 are
+// ordinary scratch that the FV-2040 happens to watch, so they are numbered the
+// way a front panel numbers them.
 
 function simParseControlNames(src) {
-    const names = {pot: new Array(SIM_POT_COUNT).fill(null)};
+    const names = {pot: new Array(SIM_POT_COUNT).fill(null), led: new Array(2).fill(null)};
     if (!src) return names;
 
     for (const line of src.split(/\r?\n/)) {
@@ -668,14 +686,16 @@ function simParseControlNames(src) {
         else if (dbl >= 0) cut = dbl + 2;
         const text = cut >= 0 ? line.slice(cut) : line;
 
-        const m = /#(POT[0-5])\b[ \t]*(.*)$/i.exec(text);
+        const m = /#(POT[0-5]|LED[12])\b[ \t]*(.*)$/i.exec(text);
         if (!m) continue;
 
         // Stop the name at a further comment marker or a block-comment close,
         // so `/* #POT0 Mix */` names the pot "Mix" rather than "Mix */".
         const name = m[2].replace(/(;|\/\/|\*\/).*$/, '').trim();
         if (!name) continue;
-        names.pot[+m[1].slice(3)] = name;
+        const tag = m[1].toUpperCase();
+        if (tag.startsWith('LED')) names.led[+tag.slice(3) - 1] = name;
+        else names.pot[+tag.slice(3)] = name;
     }
     return names;
 }
@@ -687,7 +707,7 @@ function simSetControlLabel(id, name, fallback) {
     el.classList.toggle('sim-renamed', !!name);
     // Keep the hardware name reachable once a program has renamed a pot, so it
     // is still obvious which one is being driven.
-    const host = el.closest ? el.closest('.sim-slider-row') : null;
+    const host = el.closest ? el.closest('.sim-slider-row, .sim-led-row') : null;
     if (host) host.title = name ? name + '  \u2014  ' + fallback : fallback;
 }
 
@@ -700,6 +720,9 @@ function simRefreshControlNames() {
     const names = simParseControlNames(src);
     for (let i = 0; i < SIM_POT_COUNT; i++) {
         simSetControlLabel('simPot' + i, names.pot[i], 'POT' + i);
+    }
+    for (let i = 0; i < 2; i++) {
+        simSetControlLabel('simLed' + i, names.led[i], 'LED' + (i + 1));
     }
 }
 
@@ -738,6 +761,24 @@ function simUpdateMeters(peak) {
         const p = peak && peak[i] ? peak[i] : 0;
         bar.style.width = Math.min(100, p * 100).toFixed(1) + '%';
         bar.classList.toggle('sim-meter-clip', p >= 0.999);
+    }
+}
+
+// Two lamps, driven from REG30 and REG31 the way the FV-2040 drives its pair.
+// The brightness reaching here is the mean over an audio block rather than an
+// instant sample, which is what an eye does with a PWM lamp -- and it is why a
+// program blinking faster than the block rate reads as a dim lamp rather than
+// as a stroboscopic guess.
+function simUpdateLEDs(led) {
+    if (!led) return;
+    for (let i = 0; i < 2; i++) {
+        const el = document.getElementById('simLed' + i);
+        if (!el) continue;
+        const v = Math.max(0, Math.min(1, led[i] || 0));
+        el.style.setProperty('--led', v.toFixed(3));
+        el.classList.toggle('sim-led-on', v > 0.002);
+        const out = document.getElementById('simLed' + i + 'Value');
+        if (out) out.textContent = Math.round(v * 100) + '%';
     }
 }
 
@@ -797,11 +838,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof editor !== 'undefined' && editor && editor.onDidChangeModelContent) {
             clearInterval(attach);
             let timer = null;
+            // The slot label reads the source too, so it rides the same
+            // debounce: an Auto pick should follow "; #slot N" as it is typed.
+            const onIdle = () => {
+                simRefreshControlNames();
+                if (typeof refreshSlotLabel === 'function') refreshSlotLabel();
+            };
             editor.onDidChangeModelContent(() => {
                 clearTimeout(timer);
-                timer = setTimeout(simRefreshControlNames, 300);
+                timer = setTimeout(onIdle, 300);
             });
-            simRefreshControlNames();
+            onIdle();
         } else if (++tries > 40) {
             clearInterval(attach);
         }

@@ -71,6 +71,10 @@ class FV1Core {
         // Extended pots. Contiguous from 0x19, leaving 0x1c-0x1f for POT6-POT9.
         this.POT_REGS = [0x10, 0x11, 0x12, 0x19, 0x1a, 0x1b];
         this.ADCL = 0x14; this.ADCR = 0x15;
+        // LED 1 and LED 2 read REG30 and REG31, the top two of the
+        // general-purpose file. Nothing on the chip reserves them; this
+        // follows the FV-2040, which drives two PWM lamps from the same pair.
+        this.REG30 = 0x3E; this.REG31 = 0x3F;
         this.DACL = 0x16; this.DACR = 0x17;
         this.ADDR_PTR = 0x18;
 
@@ -365,9 +369,19 @@ class FV1Core {
     // length, so the peak excursion either side of centre is Ka / 4 samples.
     // The app note's own example, wlds SIN0,5,16384, is documented as
     // "+/-4096 samples for a total delay requirement of 8193".
-    sinAmpOf(i) {
+    // The range register as the S.23 number a sine LFO swings between, which
+    // is Ka back in the accumulator's own units: 32767 reads as ~1.0, 16384
+    // as 0.5. Both readings of a sine come from this one value, so the
+    // amplitude can never be applied to one and not the other.
+    sinRangeOf(i) {
         const ka = Math.floor(this.regs[this.SIN_RANGE[i]] / 256) & 0x7FFF;
-        return ka / 4;
+        return ka * 256;
+    }
+
+    sinAmpOf(i) {
+        // The delay-tap reading: the same range in delay samples, ten
+        // fractional bits below it, which is Ka / 4 exactly.
+        return this.sinRangeOf(i) / 1024;
     }
 
     rampAmpOf(i) {
@@ -432,14 +446,25 @@ class FV1Core {
         return pos;
     }
 
-    // Normalised LFO value in S.23, used by CHO RDAL / CHO SOF
+    // LFO value in S.23, used by CHO RDAL / CHO SOF. Neither kind is
+    // normalised to full scale: both read out scaled by their range register.
     lfoValue(sel, flags) {
         const n = this.lfoIndex(sel);
         if (this.lfoIsSine(sel)) {
             const phase = (flags & this.CHO_COS)
                 ? this.sinPhase[n] + Math.PI / 2
                 : this.sinPhase[n];
-            return Math.floor(Math.sin(phase) * this.ACC_MAX);
+            // Scaled by the amplitude register, not returned at full scale.
+            // AN-0001's second example writes POT0 straight to SIN0_RANGE,
+            // reads the oscillator with `cho rdal,SIN0` and sends it to DACL,
+            // and describes POT0 as setting the amplitude of the wave seen on
+            // a scope -- which a full-scale read makes impossible. The corpus
+            // agrees: every program here that reads a sine this way declares
+            // that LFO at 32767 and calls the result "+/-1", GA_DEMO_TREM
+            // declares 16383 and calls it "+/-0.5", and pp-basic-wonky.spn
+            // asks for "some small amount of wobble" from an amplitude of 15
+            // and would otherwise get the whole delay line.
+            return Math.floor(Math.sin(phase) * this.sinRangeOf(n));
         }
         // A ramp is not normalised to full scale. Its accumulator counts the
         // position in 1/1024 sample steps and CHO RDAL hands that raw count
@@ -510,6 +535,25 @@ class FV1Core {
 
     getDACL() { return this.regs[this.DACL] / this.ACC_MAX; }
     getDACR() { return this.regs[this.DACR] / this.ACC_MAX; }
+
+    // Lamp brightness, read the way the FV-2040 reads it: the register as
+    // S1.23, 0 off and 1.0 full.
+    //
+    // Negative is off rather than rectified. Rectifying would double the rate
+    // of anything bipolar and turn a sine into a triangle, silently, with no
+    // way for a program to ask for the other behaviour. Clipping at zero is at
+    // least predictable, and a program that wants the whole waveform folds it
+    // itself -- `cho rdal,sin0 / sof 0.5,0.5 / wrax REG30,1.0`.
+    //
+    // The scale is linear for the same reason. An eye is not linear and a
+    // gamma curve would look better on a first try, but then a program author
+    // cannot predict what a value does; shaping a curve is two instructions
+    // for a program that has a multiplier, so the simulator stays out of it.
+    getLED(i) {
+        const v = this.regs[i === 0 ? this.REG30 : this.REG31];
+        if (!(v > 0)) return 0;
+        return v > this.ACC_MAX ? 1 : v / this.ACC_MAX;
+    }
 
     step(pc) {
         const op = this.iOp[pc];
@@ -659,13 +703,28 @@ class FV1Core {
                 return pc + 1 + (doSkip ? b : 0);
             }
 
+            // WLDS and WLDR write the rate and range registers and nothing
+            // else. They do NOT reset the LFO phase. SPINAsm's own tables say
+            // which instruction zeroes what: JAM's operation is written
+            // "0 -> RAMP LFO N", while WLDS and WLDR have "See Description"
+            // and describe themselves only as loading "frequency and
+            // amplitude control values". A reset inside WLDR would make JAM
+            // dead silicon, and there is no JAM at all for the sines, so a
+            // reset hiding inside WLDS would be the one way to zero a sine
+            // and would not have gone undocumented. The manual's SKP RUN
+            // pairing is hedged as "typically", which it could not be if an
+            // unguarded WLD pinned the LFO at zero.
+            //
+            // Invisible to the usual idiom: every program in spin-test/files
+            // that loads an LFO guards it behind SKP RUN, so the WLD runs once
+            // and a reset there is the same as no reset. Total for a program
+            // that runs them unguarded -- pinned at zero versus free-running.
             case this.OP_WLDX: {
                 // WLDS: load sine LFO rate and range into the registers.
                 // AN-0001: ACC[22:14] holds Kf and ACC[22:8] holds Ka.
                 const sel = a & 0x03;
                 this.regs[this.SIN_RATE[sel]] = (b & 0x1FF) * 16384;
                 this.regs[this.SIN_RANGE[sel]] = (c & 0x7FFF) * 256;
-                this.sinPhase[sel] = 0;
                 break;
             }
 
@@ -677,10 +736,10 @@ class FV1Core {
                 if (rate < 0) rateReg = -rateReg;
                 this.regs[this.RMP_RATE[sel]] = rateReg;
                 this.regs[this.RMP_RANGE[sel]] = c & 0x03;
-                this.rampPos[sel] = 0;
                 break;
             }
 
+            // The only instruction that zeroes a phase, and ramps only.
             case this.OP_JAM:
                 this.rampPos[this.lfoIndex(a)] = 0;
                 break;

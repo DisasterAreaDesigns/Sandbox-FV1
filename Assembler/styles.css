@@ -1580,6 +1580,58 @@ body.dark-mode .opcodes-notes {
     color: var(--flyout-text-muted, #666);
 }
 
+.sim-note p { margin: 0 0 4px 0; }
+.sim-note p:last-child { margin-bottom: 0; }
+
+.sim-note code {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+}
+
+/* Indicator lamps ---------------------------------------------------------
+   Two of them, driven from REG30 and REG31 as on the FV-2040. --led carries
+   the brightness the program asked for and everything visible is derived from
+   it, so zero is genuinely dark rather than a dimmed-but-still-lit dot. The
+   scale is linear, matching the firmware: predictable beats pretty for a
+   control surface, and a program that wants a curve writes the curve. */
+.flyout-content .sim-led-row {
+    display: grid;
+    grid-template-columns: 16px 1fr 46px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.sim-led {
+    --led: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--flyout-button-bg, #e9ecef);
+    border: 1px solid var(--flyout-border, #dee2e6);
+    transition: background-color 0.06s linear, box-shadow 0.06s linear;
+}
+
+.sim-led.sim-led-on {
+    background: rgba(255, 86, 48, calc(0.15 + 0.85 * var(--led)));
+    border-color: rgba(255, 86, 48, calc(0.45 + 0.55 * var(--led)));
+    box-shadow: 0 0 calc(2px + 9px * var(--led))
+                rgba(255, 86, 48, calc(0.55 * var(--led)));
+}
+
+.sim-led-name {
+    font-size: 0.9em;
+    color: var(--flyout-text, #333);
+    min-width: 0;
+}
+
+.sim-led-name span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sim-slider-row input[type="range"] { flex: 1; min-width: 0; margin: 0; }
 
 /* The readout is the widest it ever gets ("-40 dB", "8000 Hz", "100%"), so the
@@ -1718,6 +1770,7 @@ body.dark-mode .opcodes-notes {
     white-space: nowrap;
 }
 
+#simPanel .flyout-content .sim-led-row,
 #simPanel .sim-meters {
     margin-bottom: 4px;
 }
@@ -1782,3 +1835,16 @@ body.dark-mode .opcodes-notes {
    rather than mysteriously absent, but it is visibly inert. */
 .sim-unavailable .sim-row,
 .sim-unavailable .midi-log-row { opacity: 0.55; }
+
+/* The auto slot button spans both columns: it is not one of the eight
+   toggle positions, it is a different way of choosing among them. */
+.button-grid .filename-btn-auto {
+    grid-column: 1 / -1;
+}
+
+/* An auto destination that came out wrong -- an out-of-range number, or two
+   tags disagreeing -- still resolves to something, so the label has to say
+   that it fell back rather than let a silent default look deliberate. */
+#filenameLabel.slot-warn {
+    color: #b26a00;
+}

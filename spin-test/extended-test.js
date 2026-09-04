@@ -352,9 +352,11 @@ test('RAND fills a register without touching ACC', () => {
 
 test('an LFO above the FV-1\'s four runs, and only that one', () => {
     const sweep = (read) => outputs(core(
-        EXT + `skp run, 1\nwlds sin2, 100, 16384\ncho rdal, ${read}\nwrax dacl, 0\n`), 12000);
+        EXT + `skp run, 1\nwlds sin2, 100, 32767\ncho rdal, ${read}\nwrax dacl, 0\n`), 12000);
     // At rate 100 the phase advances 100/131072 radians a sample, so a whole
-    // cycle takes about 8200 -- long enough to see both halves of it.
+    // cycle takes about 8200 -- long enough to see both halves of it. The
+    // range is 32767 because CHO RDAL scales a sine by it, so that is what
+    // asks for the full swing this checks for.
 
     const own = sweep('sin2');
     assert.ok(Math.max(...own) > 0.9 && Math.min(...own) < -0.9,
@@ -388,6 +390,85 @@ test('POT3 to POT5 reach the core', () => {
         assert.ok(Math.abs(other.getDACL()) < 0.01,
             `${name} picked up one of POT0-POT2: ${other.getDACL()}`);
     }
+});
+
+test('#extended does not widen the WLDS amplitude', () => {
+    // Amplitude fills bits 5-19 and rate 20-28, so WLDS has no spare bit to
+    // widen into -- the field is 15 bits with or without the pragma. Reading it
+    // through the delay-address parser would make '#extended' silently truncate
+    // 40000 to its low 15 bits, 7232, where the field should clamp to 32767.
+    //
+    // Assembled here rather than through build(), because clamping is what is
+    // being checked and build() runs with clamp off.
+    const amp = (source) => {
+        const asm = new FV1Assembler(source, { clamp: true, spinReals: true });
+        asm.parse();
+        asm.generateMachineCode();
+        assert.equal(asm.errors.length, 0, asm.errors.join('\n'));
+        const w = (asm.program[0] << 24 | asm.program[1] << 16 |
+            asm.program[2] << 8 | asm.program[3]) >>> 0;
+        return (w >>> 5) & 0x7FFF;
+    };
+
+    assert.equal(amp(EXT + 'wlds SIN0, 26, 40000\n'), 32767,
+        'the amplitude clamped, rather than being truncated to 7232');
+    assert.equal(amp('wlds SIN0, 26, 40000\n'), 32767,
+        'and the pragma made no difference to it');
+    assert.equal(amp(EXT + 'wlds SIN0, 26, 32767\n'), 32767,
+        'a full-scale amplitude still fits');
+});
+
+test('a sine reads out at its range, not at full scale', () => {
+    // CHO RDAL hands back the sine scaled by that LFO's range register. A rate
+    // of zero parks the phase at 0, so a COS read is the range itself and
+    // nothing has to be timed.
+    const source = (a, b) => `
+        wlds    SIN${a}, 0, 32767
+        wlds    SIN${b}, 0, 16384
+        cho     rdal, SIN${a}, REG|COS
+        wrax    REG0, 0
+        cho     rdal, SIN${b}, REG|COS
+        rdax    REG0, -0.25
+        wrax    DACL, 0
+    `;
+    const c = core(source(1, 0));
+    c.run(0, 0);
+    // 0.5 - 0.25 * 1.0, so a full-scale read would give 0.75.
+    assert.ok(Math.abs(c.getDACL() - 0.25) < 1e-3,
+        `expected 0.25, got ${c.getDACL()}`);
+
+    const ext = core(EXT + source(3, 2));
+    ext.run(0, 0);
+    assert.ok(Math.abs(ext.getDACL() - 0.25) < 1e-3,
+        `SIN2/SIN3: expected 0.25, got ${ext.getDACL()}`);
+});
+
+test('a 16384 sine drives sof 1,0.5 over 0 to 1', () => {
+    // tremolo-shapes.spn's own idiom, and the reason the scale has to be the
+    // range: a half-scale sine offset by a half sweeps a tremolo cleanly from
+    // silence to unity. At +/-1 the same two instructions give -0.5 .. 1.5 --
+    // a third of the cycle flat against the rail and the rest of it phase
+    // inverted, which is not what the program says it does.
+    const c = core(`
+        skp     RUN, 1
+        wlds    SIN0, 60, 16384
+        cho     rdal, SIN0
+        sof     1, 0.5
+        wrax    DACL, 0
+    `);
+    let lo = 1, hi = -1, railed = 0;
+    const N = 8000;
+    for (let i = 0; i < N; i++) {
+        c.run(0, 0);
+        const y = c.getDACL();
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+        if (y >= 0.9999) railed++;
+    }
+    assert.ok(lo > -0.005, `the trough reached ${lo.toFixed(3)}, so the gain went negative`);
+    assert.ok(hi > 0.99, `the peak only reached ${hi.toFixed(3)}`);
+    assert.ok(railed / N < 0.1,
+        `${(100 * railed / N).toFixed(0)}% of the cycle sat on the rail`);
 });
 
 // ---- the reference --------------------------------------------------------

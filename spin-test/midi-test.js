@@ -96,6 +96,23 @@ async function run() {
         (await pots()).slice(3), [1, 0, 32 / 127]);
     check('there are six pots in all', (await pots()).length, 6);
 
+    await frame();
+    check('the extended pots reach their sliders too',
+        await page.evaluate(() => [3, 4, 5].map(i => [
+            document.getElementById('simPot' + i).value,
+            document.getElementById('simPot' + i + 'Value').textContent
+        ])),
+        [['100', '100%'], ['0', '0%'], ['25', '25%']]);
+
+    check('the last message names the pot it moved',
+        await page.evaluate(() => document.getElementById('midiLine').textContent),
+        'CC55 \u2192 POT5 \u00b7 25%');
+
+    // put them back so the checks below start from a known place
+    await send(CH1, 53, 64);
+    await send(CH1, 54, 64);
+    await send(CH1, 55, 64);
+
     console.log('\nBypass, CC102');
     await send(CH1, 102, 0);
     check('0 bypasses', await bypassed(), true);
