@@ -8,6 +8,7 @@ class FV1Assembler {
         // Constants
         this.PROGLEN = 128;
         this.DELAYSIZE = 32767;
+        this.DELAYSIZE_EXT = 65535;   // extended: 16 bit delay addressing
 
         // Fixed point constants
         this.REF_S1_14 = Math.pow(2, 14);
@@ -49,6 +50,17 @@ class FV1Assembler {
         this.sym = null;
         this.lastLfoName = null;
 
+        // ---- extended instruction set (FV-2040) ---------------------------
+        //
+        // Nothing here exists unless the source carries a '#extended' line.
+        // Everything it adds is additive -- wider fields in bits no assembled
+        // program has ever set, plus symbols and two mnemonics -- so a source
+        // without the pragma assembles to exactly the bytes it always did.
+        // This mirrors asfv1-extended, which spin-test diffs against.
+        this.extended = false;
+        this.delaysize = this.DELAYSIZE;   // largest block MEM may allocate
+        this.addrmax = 0x7FFF;             // largest literal delay address
+
         // Instruction opcodes
         this.opcodes = {
             'RDA': 0b00000,
@@ -79,8 +91,18 @@ class FV1Assembler {
             'WLDR': 0b10010,
             'JAM': 0b10011,
             'CHO': 0b10100,
-            'RAW': 0b00000
+            'RAW': 0b00000,
+            // Extension-only. They are in the table whether or not the pragma
+            // is on, so the scanner reads one as a mnemonic and its operands
+            // are consumed normally; parseInstruction refuses it when the
+            // pragma is off. Without that, RMPAX would fail as an undefined
+            // label three errors later, which is true and says nothing.
+            'RMPAX': 0b00001,
+            'RAND': 0b10101
         };
+
+        // Last, so the symbol table and the error list both exist.
+        this.scanPragmas();
     }
 
     /**
@@ -101,6 +123,84 @@ class FV1Assembler {
         if (frac > 0.5) return floor + 1;
         if (frac < 0.5) return floor;
         return floor % 2 === 0 ? floor : floor + 1;   // ties to even
+    }
+
+    // Names that exist only under '#extended'. They are recognised either way,
+    // so that using one without the pragma says why rather than reporting an
+    // undefined label.
+    static get EXT_ONLY_OPS() { return ['RMPAX', 'RAND']; }
+    static get EXT_ONLY_REGS() {
+        return ['POT3', 'POT4', 'POT5',
+            'SIN2', 'SIN3', 'RMP2', 'RMP3',
+            'SIN2_RATE', 'SIN2_RANGE', 'SIN3_RATE', 'SIN3_RANGE',
+            'RMP2_RATE', 'RMP2_RANGE', 'RMP3_RATE', 'RMP3_RANGE'];
+    }
+
+    /**
+     * Scan for assembler pragmas before tokenising.
+     *
+     * A pragma is a line whose first non-blank character is '#'. There is no
+     * ambiguity to resolve: '#' appears in FV-1 source only as a MEM label
+     * modifier, and never leads a line.
+     *
+     * Matched lines are blanked rather than removed, so every line number in
+     * every later message is still the one in the file. A pragma may sit
+     * anywhere -- what it changes is global to the assembly, and a rule about
+     * position would only be a rule to break.
+     */
+    scanPragmas() {
+        for (let i = 0; i < this.source.length; i++) {
+            const body = this.source[i].split(';')[0].trim();
+            if (!body.startsWith('#')) continue;
+            this.source[i] = '';
+            if (body.slice(1).trim().toUpperCase() === 'EXTENDED') {
+                this.enableExtended();
+            } else {
+                this.error(`Unknown pragma ${body}`, i + 1);
+            }
+        }
+    }
+
+    /**
+     * Turn on the extended instruction set for this source: 16 bit delay
+     * addressing, POT3-POT5, RMPAX, RAND, and four more LFOs with their eight
+     * registers. Additive throughout, which is the only reason it is safe to
+     * touch an assembler the whole corpus depends on.
+     */
+    enableExtended() {
+        if (this.extended) return;
+        this.extended = true;
+        this.delaysize = this.DELAYSIZE_EXT;
+        this.addrmax = 0xFFFF;
+        Object.assign(this.symtbl, {
+            // Contiguous, and stopping short of 0x1f: a multiplexer gives eight
+            // channels, so 0x1c-0x1f is left for POT6-POT9 rather than taking
+            // the tidier-looking 0x13 beside POT2 and splitting the run the
+            // firmware has to write.
+            'POT3': 0x19, 'POT4': 0x1a, 'POT5': 0x1b,
+            // Bit 2 of an LFO code is the extension, bit 1 the kind, bit 0 the
+            // low select -- so 0-3 still mean what they did.
+            'SIN2': 0x04, 'SIN3': 0x05, 'RMP2': 0x06, 'RMP3': 0x07,
+            // 0x08-0x0f is the gap the FV-1 leaves between RMP1_RANGE and POT0.
+            'SIN2_RATE': 0x08, 'SIN2_RANGE': 0x09,
+            'SIN3_RATE': 0x0a, 'SIN3_RANGE': 0x0b,
+            'RMP2_RATE': 0x0c, 'RMP2_RANGE': 0x0d,
+            'RMP3_RATE': 0x0e, 'RMP3_RANGE': 0x0f
+        });
+        debugLog('Extended instruction set enabled', 'info');
+    }
+
+    /**
+     * Say when the pragma is what stands between here and success -- and only
+     * when it would actually help. For an address, one inside the extended
+     * range and outside the FV-1's. A plain typo gets the plain message,
+     * because a hint on every out of range number is noise, and noise is how
+     * real messages get skipped.
+     */
+    extendedHint(msg, val = null) {
+        if (this.extended) return '';
+        if (val !== null && !(val > 0x7FFF && val <= 0xFFFF)) return '';
+        return ` (#extended ${msg})`;
     }
 
     initSymbolTable() {
@@ -596,6 +696,10 @@ class FV1Assembler {
                 } else if (fullName.endsWith('^') && this.symtbl.hasOwnProperty(baseName + '^')) {
                     value = this.symtbl[baseName + '^'];
                 }
+            } else if (!this.extended && FV1Assembler.EXT_ONLY_REGS.includes(baseName)) {
+                this.error(`${baseName} requires #extended`, this.sline);
+                this.nextSymbol();
+                return 0;
             } else {
                 this.error(`Undefined symbol: ${this.sym.text}`, this.sline);
                 this.nextSymbol();
@@ -834,9 +938,19 @@ class FV1Assembler {
         return arg & 0x7FF;
     }
 
-    parseDelayAddress(mnemonic = '') {
+    // `maxAddr` overrides the width in force, which '#extended' widens to 16
+    // bits. WLDS passes 15 explicitly: its sine amplitude shares this parser
+    // but is a fixed 15 bit field, and letting it follow the address width
+    // would pass an out of range amplitude through to be masked off silently
+    // during encoding.
+    //
+    // The real-valued form stays at REF_S_15, so `rda 0.5` still means address
+    // 16384 and not half of a bigger tank. Porting a source by adding the
+    // pragma must not move an address that was already there.
+    parseDelayAddress(mnemonic = '', maxAddr = null) {
+        const top = maxAddr === null ? this.addrmax : maxAddr;
         let addr = this.parseExpression();
-        
+
         // Check if this is a fractional value that should be converted
         if (addr >= this.MIN_S_15 && addr <= this.MAX_S_15) {
             // This is a fractional value, convert it
@@ -844,17 +958,20 @@ class FV1Assembler {
         } else {
             // This is an integer delay address, use as-is but validate range
             addr = Math.round(addr);
-            if (addr < -0x8000 || addr > 0x7FFF) {
+            if (addr < -0x8000 || addr > top) {
                 if (this.clamp) {
-                    addr = Math.max(-0x8000, Math.min(0x7FFF, addr));
+                    addr = Math.max(-0x8000, Math.min(top, addr));
                     this.warn(`Address clamped to 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
                 } else {
-                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}`, this.instLine);
+                    this.error(`Invalid address 0x${(addr & 0xFFFF).toString(16)} for ${mnemonic}` +
+                        this.extendedHint('reaches 16 bit addresses', addr), this.instLine);
                     addr = 0;
                 }
             }
         }
-        return addr & 0x7FFF;
+        // Masked to the full field; each encoder narrows it to the width that
+        // instruction actually has.
+        return addr & 0xFFFF;
     }
 
     parseOffset(mnemonic = '') {
@@ -889,12 +1006,22 @@ class FV1Assembler {
         }
 
         // Allow 0-3 for normal LFOs, and 8-9 for COS LFOs in CHO RDAL
-        if ((lfo >= 0 && lfo <= 3) || (mnemonic === 'CHO' && (lfo === 8 || lfo === 9))) {
+        const lfomax = this.extended ? 7 : 3;
+        if ((lfo >= 0 && lfo <= lfomax) || (mnemonic === 'CHO' && (lfo === 8 || lfo === 9))) {
             return lfo;
         } else {
             this.error(`Invalid LFO ${lfo} for ${mnemonic}`, this.instLine);
             return 0;
         }
+    }
+
+    // Split an LFO code for WLDS/WLDR into its two select fields: bit 29 and
+    // bit 31. The kind bit is not part of it -- WLDS clears it and WLDR sets
+    // it, as they always have -- so the low select is bit 0 of the code and the
+    // high select is bit 2. Without the pragma the code is at most 3 and the
+    // high bit is always zero, so an unextended source encodes to the byte.
+    lfoBits(lfo) {
+        return [lfo & 0x01, (lfo >> 2) & 0x01];
     }
 
     getChoRdalFlags(lfo) {
@@ -915,6 +1042,13 @@ class FV1Assembler {
         // range checked.
         this.instLine = this.sline;
         this.accept('MNEMONIC');
+
+        // Named, not left to fail as an undefined label further down. The
+        // operands are still consumed by the case below, so one instruction
+        // produces one error rather than a cascade.
+        if (FV1Assembler.EXT_ONLY_OPS.includes(mnemonic) && !this.extended) {
+            this.error(`${mnemonic} requires #extended`, this.instLine);
+        }
 
         if (this.icnt >= this.PROGLEN) {
             this.error(`Max program length exceeded by ${mnemonic}`, this.sline);
@@ -980,7 +1114,12 @@ class FV1Assembler {
             case 'MAXX':
             case 'RDFX':
             case 'WRLX':
-            case 'WRHX': {
+            case 'WRHX':
+            // RAND's operands are RDAX's, field for field: register at 10:5,
+            // S1.14 coefficient at 31:16. The coefficient is the amplitude, so
+            // `rand REG0,1.0` is full scale and `rand REG0,0.002` is a dither,
+            // without spending a second instruction to scale it.
+            case 'RAND': {
                 const reg = this.parseRegister(mnemonic);
                 this.accept('OPERATOR', 'Expected comma');
                 const mult = this.parseS1_14(mnemonic);
@@ -1016,12 +1155,27 @@ class FV1Assembler {
                 break;
             }
 
-            case 'RMPA': {
+            case 'RMPA':
+            case 'RMPAX': {
                 const mult = this.parseS1_9(mnemonic);
-                this.pl.push({
-                    cmd: [mnemonic, mult],
-                    addr: this.icnt
-                });
+                const cmd = [mnemonic, mult];
+                if (mnemonic === 'RMPAX') {
+                    // Bit 5 moves the pointer scale from ACC[23:8] to
+                    // ACC[22:7]: 16 address bits with the accumulator's sign
+                    // left clear, so the whole 64k tank is reachable from a
+                    // positive accumulator, at the cost of the one
+                    // interpolation fraction bit it has to come from.
+                    cmd.push(1);
+                } else if (this.extended) {
+                    // Not an error: RMPA still means what it always meant. But
+                    // in a 64k tank it reaches only the low half, and finding
+                    // that out by hearing a delay stop halfway is worse than
+                    // being told.
+                    this.warn('RMPA reads ADDR_PTR as ACC[23:8] and reaches only ' +
+                        'the low 32k of an extended delay; RMPAX reads the whole tank',
+                        this.instLine);
+                }
+                this.pl.push({ cmd, addr: this.icnt });
                 this.icnt++;
                 break;
             }
@@ -1051,13 +1205,14 @@ class FV1Assembler {
             }
 
             case 'WLDS': {
-                const lfo = this.parseLFO(mnemonic) & 0x01;
+                const [lfoLo, lfoHi] = this.lfoBits(this.parseLFO(mnemonic));
                 this.accept('OPERATOR', 'Expected comma');
                 const freq = Math.floor(this.parseExpression()) & 0x1FF;
                 this.accept('OPERATOR', 'Expected comma');
-                const amp = this.parseDelayAddress(mnemonic);
+                // A fixed 15 bit amplitude, never the extended address width.
+                const amp = this.parseDelayAddress(mnemonic, 0x7FFF);
                 this.pl.push({
-                    cmd: [mnemonic, lfo, freq, amp],
+                    cmd: [mnemonic, lfoLo, freq, amp, lfoHi],
                     addr: this.icnt
                 });
                 this.icnt++;
@@ -1065,7 +1220,7 @@ class FV1Assembler {
             }
 
             case 'WLDR': {
-                const lfo = this.parseLFO(mnemonic) | 0x02;
+                const [lfoLo, lfoHi] = this.lfoBits(this.parseLFO(mnemonic));
                 this.accept('OPERATOR', 'Expected comma');
                 const freq = this.parseRampFreq(mnemonic); // Use dedicated ramp freq parser
                 this.accept('OPERATOR', 'Expected comma');
@@ -1085,7 +1240,7 @@ class FV1Assembler {
                     this.error(`Invalid amplitude ${ampVal} for ${mnemonic}`, this.sline);
                 }
                 this.pl.push({
-                    cmd: [mnemonic, lfo, freq, amp],
+                    cmd: [mnemonic, lfoLo | 0x02, freq, amp, lfoHi],
                     addr: this.icnt
                 });
                 this.icnt++;
@@ -1351,16 +1506,18 @@ class FV1Assembler {
 
         if (directive === 'MEM') {
             const size = Math.floor(value);
-            if (size < 0 || size > this.DELAYSIZE) {
-                this.error(`Invalid memory size ${size}`, this.sline);
+            if (size < 0 || size > this.delaysize) {
+                this.error(`Invalid memory size ${size}` +
+                    this.extendedHint('has 65536 words', size), this.sline);
                 return;
             }
 
             const base = this.delaymem;
             const top = base + size;
 
-            if (top > this.DELAYSIZE) {
-                this.error(`Delay memory exhausted: requested ${size} exceeds ${this.DELAYSIZE - this.delaymem} available`, this.sline);
+            if (top > this.delaysize) {
+                this.error(`Delay memory exhausted: requested ${size} exceeds ${this.delaysize - this.delaymem} available` +
+                    this.extendedHint('has 65536 words'), this.sline);
                 return;
             }
             
@@ -1560,6 +1717,7 @@ class FV1Assembler {
                     case 'WRLX':
                     case 'WRHX':
                     case 'MAXX':
+                    case 'RAND':
                         // Use the raw register value from symbol table (0x20-0x3F range)
                         const regValue = inst.cmd[1] & 0x3F;
                         machineCode |= (inst.cmd[2] & 0xFFFF) << 16;  // 16-bit constant
@@ -1575,14 +1733,20 @@ class FV1Assembler {
                     case 'RDA':
                     case 'WRA':
                     case 'WRAP':
-                        // 15-bit address at bits 5-19, 11-bit multiplier at bits 21-31
-                        machineCode |= (inst.cmd[1] & 0x7FFF) << 5;
+                        // 15-bit address at bits 5-19, 11-bit multiplier at bits 21-31.
+                        // Under '#extended' the address takes bit 20 as well, which
+                        // the datasheet defines as nothing and no assembled program
+                        // has ever set -- so the encoding is a strict superset and a
+                        // legacy binary decodes identically.
+                        machineCode |= (inst.cmd[1] & (this.extended ? 0xFFFF : 0x7FFF)) << 5;
                         machineCode |= (inst.cmd[2] & 0x7FF) << 21;
                         break;
 
                     case 'RMPA':
-                        // 11-bit multiplier at bits 21-31
+                    case 'RMPAX':
+                        // 11-bit multiplier at bits 21-31, pointer scale at bit 5
                         machineCode |= (inst.cmd[1] & 0x7FF) << 21;
+                        machineCode |= (inst.cmd[2] & 0x01) << 5;
                         break;
 
                     case 'SKP':
@@ -1591,29 +1755,40 @@ class FV1Assembler {
                         machineCode |= (inst.cmd[2] & 0x3F) << 21;
                         break;
 
+                    // The four extra LFOs each need one more select bit, and every
+                    // instruction that names an LFO has exactly one to spare that no
+                    // assembled program has ever set: bit 23 for CHO, bit 8 for JAM,
+                    // bit 31 for WLDS and WLDR. Codes 0-3 encode as they always did,
+                    // so these masks are unconditional -- an unextended source cannot
+                    // produce a code above 3 to put in them.
                     case 'WLDS':
-                        // 1-bit LFO select at bit 29, 9-bit frequency at bits 20-28, 15-bit amplitude at bits 5-19
+                        // 1-bit LFO select at bit 29, 9-bit frequency at bits 20-28,
+                        // 15-bit amplitude at bits 5-19, high select at bit 31
                         machineCode |= (inst.cmd[1] & 0x01) << 29;
                         machineCode |= (inst.cmd[2] & 0x1FF) << 20;
                         machineCode |= (inst.cmd[3] & 0x7FFF) << 5;
+                        machineCode |= (inst.cmd[4] & 0x01) << 31;
                         break;
 
                     case 'WLDR':
-                        // 2-bit LFO select at bits 29-30, 16-bit frequency at bits 13-28, 2-bit amplitude at bits 5-6
+                        // 2-bit LFO select at bits 29-30, 16-bit frequency at bits
+                        // 13-28, 2-bit amplitude at bits 5-6, high select at bit 31
                         machineCode |= (inst.cmd[1] & 0x03) << 29;
                         machineCode |= (inst.cmd[2] & 0xFFFF) << 13;
                         machineCode |= (inst.cmd[3] & 0x03) << 5;
+                        machineCode |= (inst.cmd[4] & 0x01) << 31;
                         break;
 
                     case 'JAM':
-                        // 2-bit LFO select at bits 6-7
-                        machineCode |= (inst.cmd[1] & 0x03) << 6;
+                        // 3-bit LFO select at bits 6-8
+                        machineCode |= (inst.cmd[1] & 0x07) << 6;
                         break;
 
                     case 'CHO':
-                        // 2-bit type at bits 30-31, 2-bit LFO at bits 21-22, 6-bit flags at bits 24-29, 16-bit arg at bits 5-20
+                        // 2-bit type at bits 30-31, 3-bit LFO at bits 21-23, 6-bit
+                        // flags at bits 24-29, 16-bit arg at bits 5-20
                         machineCode |= (inst.cmd[1] & 0x03) << 30;
-                        machineCode |= (inst.cmd[2] & 0x03) << 21;
+                        machineCode |= (inst.cmd[2] & 0x07) << 21;
                         machineCode |= (inst.cmd[3] & 0x3F) << 24;
                         machineCode |= (inst.cmd[4] & 0xFFFF) << 5;
                         break;
