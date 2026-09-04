@@ -201,6 +201,24 @@
                 
                 // Initialize FV-1 opcodes content
                 initializeFV1OpcodesContent();
+
+                // Follow the editor for the '#extended' line. Monaco may not be
+                // up yet, so poll briefly for it, the way the simulator does for
+                // its pot names.
+                let tries = 0;
+                const attach = setInterval(() => {
+                    if (typeof editor !== 'undefined' && editor && editor.onDidChangeModelContent) {
+                        clearInterval(attach);
+                        let timer = null;
+                        editor.onDidChangeModelContent(() => {
+                            clearTimeout(timer);
+                            timer = setTimeout(refreshExtendedReference, 300);
+                        });
+                        refreshExtendedReference();
+                    } else if (++tries > 40) {
+                        clearInterval(attach);
+                    }
+                }, 250);
             });
 
             // Toggle functions for sections
@@ -218,7 +236,32 @@
             }
             
             // FV-1 Opcodes data and initialization
+            // The extended reference describes FV-2040 hardware, and every one of
+            // its instructions is an error in a program that has not asked for
+            // them. So it appears when the source carries '#extended' and goes
+            // away again when the line is deleted -- following the editor rather
+            // than the last build, because you look an instruction up before you
+            // can assemble it.
+            window.refreshExtendedReference = function () {
+                let src = '';
+                try {
+                    if (typeof editor !== 'undefined' && editor && editor.getValue) {
+                        src = editor.getValue();
+                    }
+                } catch (e) { /* editor not up yet */ }
+                const on = typeof FV1Assembler !== 'undefined' &&
+                    FV1Assembler.isExtendedSource(src);
+                if (on === extendedReferenceShown) return;
+                extendedReferenceShown = on;
+                initializeFV1OpcodesContent();
+
+                const help = document.getElementById('extendedHelpSection');
+                if (help) help.style.display = on ? '' : 'none';
+            };
+            let extendedReferenceShown = false;
+
             function initializeFV1OpcodesContent() {
+                const showExtended = extendedReferenceShown;
                 const fv1Data = {
                     "title": "FV-1 Instruction Set Reference",
                     "version": "SpinSemi FV-1 DSP",
@@ -486,6 +529,49 @@
                                 }
                             ]
                         },
+
+                    "extended": {
+                        "name": "Extended",
+                        "extendedOnly": true,
+                        "opcodes": [
+                            {
+                                "name": "#extended",
+                                "syntax": "#extended",
+                                "description": "Enable the extended instruction set for this program",
+                                "notes": "\u2022 A line of its own, anywhere in the source, and it may carry a trailing comment\n\u2022 Everything in this section needs it, and nothing in it exists without it\n\u2022 It targets FV-2040 hardware - an FV-1 does not implement any of this\n\u2022 A program without the line assembles to exactly the bytes it always did"
+                            },
+                            {
+                                "name": "RMPAX",
+                                "syntax": "RMPAX coefficient",
+                                "description": "Read delay memory from addr_ptr, reading the pointer as ACC[22:7] rather than ACC[23:8]",
+                                "notes": "\u2022 The FV-1's RMPA puts the 16th address bit where the accumulator's sign is, so in a 64K tank the upper half is only reachable through negative values\n\u2022 RMPAX leaves the sign clear, so wrax addr_ptr / rmpax sweeps end to end with no seam: an address of f x 65536 is written as ACC = f\n\u2022 The price is one bit of interpolation fraction - 1/128 of a sample instead of 1/256\n\u2022 Plain RMPA still works and still means what it meant, and warns that it reaches only the low 32K"
+                            },
+                            {
+                                "name": "RAND",
+                                "syntax": "RAND register, coefficient",
+                                "description": "Load a register with a uniform random sample scaled by the coefficient",
+                                "notes": "\u2022 Operands are RDAX's: a register and an S1.14 coefficient, which is the amplitude\n\u2022 rand REG0, 1.0 is full scale over -1 to +1; rand REG0, 0.002 is a dither\n\u2022 ACC is untouched, and PACC is not latched\n\u2022 Building an LFSR by hand costs four or five of the 128 slots and has audible structure\n\u2022 The simulator's generator is seeded, so a run can be compared against the last one"
+                            },
+                            {
+                                "name": "RDA / WRA / WRAP",
+                                "syntax": "RDA memaddress, coefficient",
+                                "description": "The delay address widens from 15 bits to 16, and the MEM pool from 32767 to 65535",
+                                "notes": "\u2022 Bit 20 carries the extra address bit - a bit the datasheet defines as nothing and no assembled FV-1 program sets\n\u2022 CHO RDA needed no change: its address field was already 16 bits wide\n\u2022 A fractional address is still S.15, so rda 0.5 is still address 16384 and not half of a bigger tank\n\u2022 At 32.768 kHz the tank is two seconds rather than one"
+                            },
+                            {
+                                "name": "POT3 / POT4 / POT5",
+                                "syntax": "0x19 / 0x1a / 0x1b",
+                                "description": "Three more control inputs, beyond the FV-1's POT0-POT2",
+                                "notes": "\u2022 Read the same way: rdax POT3, 1.0 or ldax POT3\n\u2022 Contiguous from 0x19, leaving 0x1c-0x1f for POT6-POT9\n\u2022 The simulator shows sliders for these only while an extended program is loaded, and MIDI CC53, CC54 and CC55 sweep them"
+                            },
+                            {
+                                "name": "SIN2 / SIN3 / RMP2 / RMP3",
+                                "syntax": "WLDS SIN2, freq, amp",
+                                "description": "Four more LFOs, doubling the FV-1's two sines and two ramps",
+                                "notes": "\u2022 Their eight registers fill 0x08-0x0f: SIN2_RATE, SIN2_RANGE, SIN3_RATE, SIN3_RANGE, RMP2_RATE, RMP2_RANGE, RMP3_RATE, RMP3_RANGE\n\u2022 Used by WLDS, WLDR, JAM and CHO exactly as the first four are\n\u2022 The select code keeps its old meaning - bit 1 still says ramp - with a third bit above it, so codes 0-3 are unchanged\n\u2022 A numeric LFO operand may now reach 7"
+                            }
+                        ]
+                    },
                         "reserved": {
                             "name": "Reserved Words",
                             "opcodes": [
@@ -532,6 +618,7 @@
                     "control-flow": "CONTROL",
                     "lfo-generators": "LFO",
                     "registers": "REGISTERS",
+                    "extended": "EXTENDED",
                     "reserved": "RESERVED"
                 };
 
@@ -573,7 +660,10 @@
                     const navLinks = document.createElement('div');
                     navLinks.className = 'opcodes-nav-links';
 
-                    Object.entries(fv1Data.categories).forEach(([categoryId, category]) => {
+                    const categories = Object.entries(fv1Data.categories).filter(
+                        ([, category]) => !category.extendedOnly || showExtended);
+
+                    categories.forEach(([categoryId, category]) => {
                         const link = document.createElement('a');
                         link.className = `opcodes-nav-link opcodes-nav-${categoryId}`;
                         link.textContent = labelMap[categoryId] ?? category.name;
@@ -599,7 +689,7 @@
                     contentArea.className = 'opcodes-content-area';
 
                     // Create opcode sections
-                    Object.entries(fv1Data.categories).forEach(([categoryId, category]) => {
+                    categories.forEach(([categoryId, category]) => {
                         const sectionHeader = document.createElement('div');
                         sectionHeader.className = 'opcodes-section-header';
                         sectionHeader.id = 'opcodes-' + categoryId;
@@ -1021,6 +1111,22 @@
                 </ul>
                 <p>MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse. The chosen input and channel are remembered, and a controller unplugged and plugged back in is picked up again on its own.</p>
                 <p>Web MIDI needs Chrome, Edge or Firefox - Safari does not implement it. Note that the Sandbox pedal itself has no MIDI input; this drives the simulator only.</p>
+
+                <!-- Shown only while the source carries the pragma: see
+                     refreshExtendedReference(). Everything described here is an
+                     error in a program that has not asked for it. -->
+                <div id="extendedHelpSection" style="display:none;">
+                    <h4>Extended Instruction Set</h4>
+                    <p>This program carries <b>#extended</b>, which turns on an instruction set for the <b>FV-2040</b> - the FV-1 instruction set running on an RP2040, where the constraints that made sense in silicon in 1999 are off. <b>An FV-1 does not implement any of it</b>, so an extended build is not a program the Sandbox pedal can run. Delete the line and the extra instructions become errors again, which is the point: without it, this assembler produces exactly the bytes it always did.</p>
+                    <ul>
+                        <li><i>Delay memory is <b>65536 words</b> rather than 32768 - two seconds at the standard crystal instead of one - and <b>MEM</b> may allocate all of it.</i></li>
+                        <li><i><b>POT3</b>, <b>POT4</b> and <b>POT5</b> join the three the FV-1 has. The simulator shows sliders for them only while an extended program is loaded, and <b>CC53</b>-<b>CC55</b> sweep them.</i></li>
+                        <li><i><b>RMPAX</b> reads <b>ADDR_PTR</b> as ACC[22:7] instead of ACC[23:8], keeping the accumulator's sign out of the address so <b>wrax addr_ptr</b> / <b>rmpax</b> sweeps the whole tank with no seam. Plain <b>RMPA</b> still works, and still reaches only the low 32K.</i></li>
+                        <li><i><b>RAND</b> loads a register with a uniform random sample - <b>rand reg0, 0.002</b> is a dither, <b>rand reg0, 1.0</b> is full scale - without spending four or five instructions on an LFSR.</i></li>
+                        <li><i><b>SIN2</b>, <b>SIN3</b>, <b>RMP2</b> and <b>RMP3</b> double the LFOs, with their eight registers at 0x08-0x0f.</i></li>
+                    </ul>
+                    <p>The <b>EXTENDED</b> section of the instruction reference has the detail, and appears alongside this one. The simulator runs all of it, so an extended program can be auditioned here before it goes anywhere near hardware - but <b>Download to Hardware</b> will ask before writing one to a Sandbox pedal, since what is in that pedal is an FV-1.</p>
+                </div>
 
                 <h4>Connecting to Hardware</h4>
                 <p><i>Connect your <b>Sandbox FV1</b> pedal to your computer using a suitable USB cable. A new removable drive labeled <b>SANDBOX-FV1</b> should appear.</i></p>

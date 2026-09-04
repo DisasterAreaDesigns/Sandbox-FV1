@@ -1262,6 +1262,7 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
 .opcodes-nav-lfo-generators { background: #4d4d1a; color: #f0e68c; border-color: #4d4d1a; }
 .opcodes-nav-registers { background: #1a4d4d; color: #7fd4d4; border-color: #1a4d4d; }
 .opcodes-nav-reserved { background: #4d1a33; color: #e58fb0; border-color: #4d1a33; }
+.opcodes-nav-extended { background: #4d3a1a; color: #e5c07f; border-color: #4d3a1a; }
 
 /* Navigation link hover effects */
 .opcodes-nav-link:hover {
@@ -1337,6 +1338,7 @@ body.dark-mode #messages::-webkit-scrollbar-thumb:hover {
 .opcodes-category-lfo-generators { background: #4d4d1a; color: #f0e68c; }
 .opcodes-category-registers { background: #1a4d4d; color: #7fd4d4; }
 .opcodes-category-reserved { background: #4d1a33; color: #e58fb0; }
+.opcodes-category-extended { background: #4d3a1a; color: #e5c07f; }
 
 /* Syntax sections */
 .opcodes-syntax {

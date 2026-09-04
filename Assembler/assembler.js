@@ -150,15 +150,32 @@ class FV1Assembler {
      */
     scanPragmas() {
         for (let i = 0; i < this.source.length; i++) {
-            const body = this.source[i].split(';')[0].trim();
-            if (!body.startsWith('#')) continue;
+            const pragma = FV1Assembler.pragmaOf(this.source[i]);
+            if (pragma === null) continue;
             this.source[i] = '';
-            if (body.slice(1).trim().toUpperCase() === 'EXTENDED') {
+            if (pragma.toUpperCase() === 'EXTENDED') {
                 this.enableExtended();
             } else {
-                this.error(`Unknown pragma ${body}`, i + 1);
+                this.error(`Unknown pragma #${pragma}`, i + 1);
             }
         }
+    }
+
+    /** The pragma on one line, without its '#', or null if the line is not one. */
+    static pragmaOf(line) {
+        const body = String(line).split(';')[0].trim();
+        return body.startsWith('#') ? body.slice(1).trim() : null;
+    }
+
+    /**
+     * Whether a source asks for the extended set. The one place that decides,
+     * so the assembler and the parts of the app that follow the editor -- the
+     * instruction reference, the warning on the hardware path -- cannot drift
+     * apart from it.
+     */
+    static isExtendedSource(source) {
+        return String(source == null ? '' : source).split(/\r?\n/)
+            .some((line) => (FV1Assembler.pragmaOf(line) || '').toUpperCase() === 'EXTENDED');
     }
 
     /**
