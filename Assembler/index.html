@@ -167,12 +167,19 @@
                     });
                 }
                 
-                // Add hidden checkboxes that the assembler expects
+                // Add hidden checkboxes that the assembler expects.
+                //
+                // Both are ticked, which is what the SpinASM IDE does and what
+                // asfv1 does under -c -s -- and what spin-test assembles with,
+                // so the app and its tests agree. Clamping turns an
+                // out-of-range coefficient into a warning and a clamped value
+                // rather than a hard error; spinreals reads a bare 1 or 2 as
+                // 1.0 and 2.0, the way nearly all .spn source is written.
                 const hiddenCheckboxes = document.createElement('div');
                 hiddenCheckboxes.style.display = 'none';
                 hiddenCheckboxes.innerHTML = `
-                    <input type="checkbox" id="clampOption">
-                    <input type="checkbox" id="spinRealsOption">
+                    <input type="checkbox" id="clampOption" checked>
+                    <input type="checkbox" id="spinRealsOption" checked>
                 `;
                 document.body.appendChild(hiddenCheckboxes);
 

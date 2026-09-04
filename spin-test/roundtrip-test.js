@@ -241,6 +241,27 @@ test('an omitted CHO flags field means no flags', () => {
     assert.equal(firstWord('cho rda,rmp0,,100\n') >>> 24, 0, 'flags should be clear');
 });
 
+test('the generated C header compiles', () => {
+    // The array name arrives from a filename, so it carries whatever a filename
+    // does. 'bass-fv1-p2-delay.h' used to give `BASS-FV1-P2-DELAY_DATA[] = {`:
+    // not an identifier, and not a declaration either.
+    const asm = new FV1Assembler('rdax adcl, 1.0\nwrax dacl, 0\n',
+        { clamp: true, spinReals: true });
+    asm.parse();
+    asm.generateMachineCode();
+    const header = asm.toCHeader('bass-fv1-p2-delay'.toUpperCase() + '_DATA');
+
+    const decl = /const unsigned char ([A-Za-z_][A-Za-z0-9_]*)\[512\] = \{/.exec(header);
+    assert.ok(decl, `no valid declaration in:\n${header.split('\n').slice(0, 3).join('\n')}`);
+    assert.equal(decl[1], 'BASS_FV1_P2_DELAY_DATA');
+    assert.ok(asm.toCHeader('9lives')[0] !== undefined);
+    assert.match(asm.toCHeader('9lives'), /char _9lives\[/, 'a leading digit needs a prefix');
+
+    // 512 bytes, and no trailing comma before the brace.
+    assert.equal((header.match(/0x[0-9A-F]{2}/g) || []).length, 512);
+    assert.match(header, /0x11\n\};\n$/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
     try {
