@@ -16,7 +16,6 @@ let simSource = null;         // current source node
 let simInputGain = null;
 let simOutputGain = null;
 let simDryGain = null;
-let simAnalyser = null;
 let simStream = null;         // live input MediaStream, so we can stop it
 let simFileBuffer = null;
 let simFileBytes = null;      // undecoded copy, so a rate change can re-decode
@@ -24,7 +23,6 @@ let simFileName = null;
 let simExtended = false;      // was the loaded build assembled with #extended
 let simRunning = false;
 let simBypass = false;
-let simMeterTimer = null;
 let simLoadedProgram = null;
 
 // The FV-1's sample rate is its crystal frequency, so the selector is really
@@ -137,14 +135,11 @@ async function simInitEngine() {
     const inputGain = ctx.createGain();
     const outputGain = ctx.createGain();
     const dryGain = ctx.createGain();
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
 
     inputGain.connect(node);
     node.connect(outputGain);
     dryGain.connect(outputGain);
-    outputGain.connect(analyser);
-    analyser.connect(ctx.destination);
+    outputGain.connect(ctx.destination);
     dryGain.gain.value = 0;
 
     simCtx = ctx;
@@ -152,7 +147,6 @@ async function simInitEngine() {
     simInputGain = inputGain;
     simOutputGain = outputGain;
     simDryGain = dryGain;
-    simAnalyser = analyser;
     simApplyLevels();
     // The worklet's core starts at its own 0.5 default, so a pot moved before
     // the engine existed -- by a slider, or by MIDI -- would otherwise be shown
@@ -172,7 +166,6 @@ function simTeardownEngine() {
     simInputGain = null;
     simOutputGain = null;
     simDryGain = null;
-    simAnalyser = null;
 }
 
 // simRunning is only set once the whole start has succeeded, so it cannot

@@ -770,34 +770,6 @@ async function downloadHex() {
     }
 }
 
-async function downloadHexToHardware() {
-    const hex = document.getElementById('output').value;
-
-    if (!selectedFilename) {
-        debugLog('Please select a filename first.', 'errors');
-        return;
-    }
-
-    if (!outputDirectoryHandle) {
-        debugLog('Please select an output directory first.', 'errors');
-        return;
-    }
-
-    const filename = selectedFilename;
-
-    try {
-        const fileHandle = await outputDirectoryHandle.getFileHandle(filename, {
-            create: true
-        });
-        const writable = await fileHandle.createWritable();
-        await writable.write(hex);
-        await writable.close();
-        debugLog(`File saved as ${filename} to hardware directory`, 'success');
-    } catch (err) {
-        debugLog('Error saving to hardware directory: ' + err.message, 'errors');
-    }
-}
-
 async function downloadPlainHex() {
     const hex = document.getElementById('output').value;
     if (!hex) {
