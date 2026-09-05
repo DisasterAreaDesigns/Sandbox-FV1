@@ -51,10 +51,9 @@ SOFTWARE.
 %% asfv1-extended, a fork of asfv1 v1.2.7 (https://github.com/ndf-zz/asfv1)
 =========================================
 
-Vendored as "ASFV1 Source/asfv1-extended.py".  asfv1 with an extended
-instruction set for the FV-2040, enabled per-source by a '#extended' line and
-otherwise dormant.  It is the reference the extended assembler in this repo is
-checked against; see spin-test/extended-test.js.
+Vendored as "ASFV1 Source/asfv1-extended.py".  A fork of asfv1 used as a
+reference the assembler in this repo is checked against; see
+spin-test/extended-test.js.
 
 MIT License
 

@@ -501,15 +501,13 @@ machineCode = 0b01101 | (8192 &lt;&lt; 16) | (102 &lt;&lt; 5);</code></pre></div
 - <code>WRAX reg, coeff</code> - Write to register with coefficient
 - <code>RDFX reg, coeff</code> - Read register with coefficient (filtered)
 - <code>WRLX reg, coeff</code> - Write to register (low shelf)
-- <code>WRHX reg, coeff</code> - Write to register (high shelf)
-- <code>RAND reg, coeff</code> - Fill a register with <code>coeff</code> &times; a uniform draw over [-1, 1); the accumulator is left alone (<code>#extended</code>)</p>
+- <code>WRHX reg, coeff</code> - Write to register (high shelf)</p>
 
 <p><strong>Memory I/O:</strong>
 - <code>RDA addr, coeff</code> - Read delay memory
 - <code>WRA addr, coeff</code> - Write delay memory
 - <code>WRAP addr, coeff</code> - Write delay memory with wrap
-- <code>RMPA coeff</code> - Ramp delay address
-- <code>RMPAX coeff</code> - Ramp delay address, reading <code>ADDR_PTR</code> as <code>ACC[22:7]</code> (<code>#extended</code>)</p>
+- <code>RMPA coeff</code> - Ramp delay address</p>
 
 <p><strong>Control Flow:</strong>
 - <code>SKP condition, target</code> - Skip instructions conditionally
@@ -521,7 +519,7 @@ machineCode = 0b01101 | (8192 &lt;&lt; 16) | (102 &lt;&lt; 5);</code></pre></div
 - <code>CHO type, lfo, flags, coeff</code> - Chorus/LFO operations
 - <code>JAM lfo</code> - Reset LFO</p>
 
-<p>The LFOs are <code>SIN0</code>, <code>SIN1</code>, <code>RMP0</code> and <code>RMP1</code>, whose rate and range registers are <code>SIN0_RATE</code> through <code>RMP1_RANGE</code> at <code>0x00</code>-<code>0x07</code>. Under <code>#extended</code> there are four more - <code>SIN2</code>, <code>SIN3</code>, <code>RMP2</code> and <code>RMP3</code>, with <code>SIN2_RATE</code> through <code>RMP3_RANGE</code> at <code>0x08</code>-<code>0x0f</code> - and they behave in every way like the first four.</p>
+<p>The LFOs are <code>SIN0</code>, <code>SIN1</code>, <code>RMP0</code> and <code>RMP1</code>, whose rate and range registers are <code>SIN0_RATE</code> through <code>RMP1_RANGE</code> at <code>0x00</code>-<code>0x07</code>.</p>
 
 <h3 id="toc_19">Pseudo-Instructions</h3>
 

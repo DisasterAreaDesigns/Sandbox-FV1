@@ -18,32 +18,11 @@ The hardware is very simple, incorporating a high-quality analog front-end that 
 
 Programming is accomplished using the aforementioned RP2040 board - we've used a Waveshare RP2040 Zero for its compact form factor and handy USB-C port, but clones of this part or other variations may also work.  the RP2040 code is implemented in CircuitPython for ease of deployment and modification.  To program a new algorithm on the Sandbox EEPROM, simply copy an assembled .HEX or .BIN file to the RP2040 CIRCUITPY or SANDBOX removable drive.  Name the program 0.HEX to program algorithm zero, 1.HEX for program 1, and so on.  Adding any other named .BIN or .HEX file will write program #3, which is the program accessed if no toggle switches are assembled to the Sandbox PCBA.
 
-We've also added an FV-1 simulator to the web app.  The assembled program runs through a software model of the chip at its native 32.768 kHz, so you can audition an algorithm on a test tone, an audio file, or live input before you ever program the hardware.  The three pot controls are on screen, and each successful build reloads into the simulator while it plays.  Two indicator lamps follow `REG30` and `REG31`, as the FV-2040 firmware does.  The simulator models accumulator saturation and the FV-1's companded delay memory, and its LFO rates and depths follow the equations in Spin's application note AN-0001.  Chorus interpolation is approximated, so always confirm a design on real hardware.
+We've also added an FV-1 simulator to the web app.  The assembled program runs through a software model of the chip at its native 32.768 kHz, so you can audition an algorithm on a test tone, an audio file, or live input before you ever program the hardware.  The three pot controls are on screen, and each successful build reloads into the simulator while it plays.  Two indicator lamps follow `REG30` and `REG31`.  The simulator models accumulator saturation and the FV-1's companded delay memory, and its LFO rates and depths follow the equations in Spin's application note AN-0001.  Chorus interpolation is approximated, so always confirm a design on real hardware.
 
-The simulator can also be played from a MIDI controller plugged into your computer.  Press **Enable MIDI** in the simulator panel, allow the browser's MIDI prompt, and pick an input and channel.  `CC50` through `CC55` sweep POT0 through POT5, and `CC102` switches the effect, with `0-63` bypassed and `64-127` engaged.  MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse.  Note that the Sandbox pedal itself has no MIDI input - this drives the simulator only.
+The simulator can also be played from a MIDI controller plugged into your computer.  Press **Enable MIDI** in the simulator panel, allow the browser's MIDI prompt, and pick an input and channel.  `CC50`, `CC51` and `CC52` sweep POT0, POT1 and POT2, and `CC102` switches the effect, with `0-63` bypassed and `64-127` engaged.  MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse.  Note that the Sandbox pedal itself has no MIDI input - this drives the simulator only.
 
 So it's a web app and a pedal.  Hook 'em up and write some code!
-
-## The Extended Instruction Set
-
-The assembler and the simulator both understand an extended instruction set for the **FV-2040** - the FV-1 instruction set running on an RP2040, where the constraints that made sense in silicon in 1999 are off.  None of it exists unless a program contains a line reading `#extended`, and a program without that line assembles to exactly the bytes it always did: all 140 of the programs in `spin-test/files` that asfv1 accepts assemble byte-identical to what asfv1 produces.
-
-|                | FV-1                    | `#extended`                                        |
-| -------------- | ----------------------- | -------------------------------------------------- |
-| Delay address  | 15 bits, 32768 words    | 16 bits, 65536 words                               |
-| `MEM` pool     | 32767                   | 65535                                              |
-| Pot registers  | POT0-POT2               | plus POT3-POT5 at `0x19`-`0x1b`                    |
-| Indirect read  | `RMPA`, `ACC[23:8]`     | plus `RMPAX`, `ACC[22:7]`                          |
-| Noise          | an LFSR you build       | `RAND`, opcode 21                                  |
-| LFOs           | SIN0-SIN1, RMP0-RMP1    | plus SIN2-SIN3, RMP2-RMP3, registers `0x08`-`0x0f` |
-
-`RMPAX` is the one worth explaining.  `ADDR_PTR` already carries sixteen address bits in `ACC[23:8]`, but the top one is the accumulator's *sign*, so in a 64K tank the upper half is reachable only through negative values and a sweep across the middle cannot be computed on an accumulator that saturates rather than wraps.  `RMPAX` moves the split to `ACC[22:7]`: sixteen address bits with the sign left clear, so the ordinary `wrax addr_ptr` / `rmpax` idiom sweeps end to end with no seam.  The price is one bit of interpolation fraction, and it is the only place that bit can come from - twenty-four bits have to hold both an address and a fraction.  Plain `RMPA` still means what it always meant, and warns that it reaches only the low 32K.
-
-The **EXTENDED** section of the instruction reference and a matching section of the help appear as soon as the source carries the pragma, and go away again when the line is deleted.  The simulator runs all of it: sliders for POT3-POT5 appear when an extended program is loaded, `CC53`-`CC55` sweep them, and the clock panel reports the wider tank.
-
-**An FV-1 does not implement any of this.**  It will not refuse an extended image; it will run it as something else.  Since the Sandbox pedal has an FV-1 in it, **Download to Hardware** asks for confirmation before writing an extended build.
-
-The reference implementation is **asfv1-extended**, a fork of [asfv1](https://github.com/ndf-zz/asfv1) carrying the same extension.  It is vendored in `ASFV1 Source/` alongside upstream, so `npm run test:extended` assembles its whole test suite with both and compares the images without anything else installed.  Set `ASFV1_EXTENDED` to point at a working checkout instead, which is what you want while changing the fork itself.
 
 ## Running the Assembler Locally
 The web app needs to be served over http - opening `Assembler/index.html` directly as a `file://` page will not work.  Browsers block the audio engine the simulator depends on from `file://` origins, and the directory and serial access used to talk to the hardware need a secure context too.  `localhost` counts as secure, so any static file server will do:
@@ -57,10 +36,10 @@ Then open <http://localhost:8000> in Chrome or Edge.  If you prefer Node, `npx s
 Chrome or Edge are required for programming hardware and selecting folders, since Firefox and Safari do not implement the File System Access and Web Serial APIs.  The simulator itself works in any browser with AudioWorklet support, and its MIDI control works in Chrome, Edge and Firefox - Safari has no Web MIDI.
 
 ## What's In This Repo?
-* **ASFV1 Source:**  copies of the Python source for asfv1 and for asfv1-extended, the fork carrying the extended instruction set
+* **ASFV1 Source:**  copies of the Python source for asfv1, the reference assembler this one is checked against
 * **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`) with MIDI control (`fv1-midi.js`)
 * **Firmware**  CircuitPython code for the RP2040 Zero program module
-* **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler: `npm run test:roundtrip` for the assembler and simulator as a pair, `npm run test:emu` for the DSP core, `npm run test:extended` for the extended instruction set, and `npm run test:midi` for the simulator's MIDI control
+* **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler: `npm run test:roundtrip` for the assembler and simulator as a pair, `npm run test:emu` for the DSP core, `npm run test:midi` for the simulator's MIDI control, and `npm run test:page` for the editor's unsaved-changes guard
 * **Hardware**  Schematic and PCB files for Sandbox pedal hardware
 
 ## What Can I Do With All This?

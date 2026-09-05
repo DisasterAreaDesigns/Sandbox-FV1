@@ -960,7 +960,7 @@
                         <option value="12288">12.288 kHz</option>
                         <option value="16384">16.384 kHz (half)</option>
                         <option value="24576">24.576 kHz</option>
-                        <option value="31250">31.25 kHz (FV-2040)</option>
+                        <option value="31250">31.25 kHz</option>
                         <option value="32768" selected>32.768 kHz (standard)</option>
                         <option value="44100">44.1 kHz</option>
                         <option value="48000">48 kHz</option>
@@ -1118,21 +1118,19 @@
                 <ul>
                     <li><i>Press <b>Assemble</b>, open the <b>TEST DRIVE</b> tab, then press <b>Play</b>. <b>Ctrl+P</b> (<b>Alt+P</b> on Windows) plays and stops from anywhere, including the editor, and opens the tab as it starts.</i></li>
                     <li><i>Choose a <b>Source</b>: a test tone, noise, a one-second click train, an audio file from your computer, or live input from a microphone or interface. Audio files of any sample rate are resampled to the simulator's clock when loaded.</i></li>
-                    <li><i>The <b>Crystal</b> setting under <b>Clock</b> runs the simulated chip anywhere from 8.192 kHz to 64 kHz, matching a crystal swap on hardware. The panel shows the resulting maximum delay time. <b>31.25 kHz</b> is the FV-2040's rate, for checking how a program lands on that hardware.</i></li>
+                    <li><i>The <b>Crystal</b> setting under <b>Clock</b> runs the simulated chip anywhere from 8.192 kHz to 64 kHz, matching a crystal swap on hardware. The panel shows the resulting maximum delay time.</i></li>
                     <li><i>The <b>POT0-POT2</b> sliders correspond to the three knobs on the Sandbox hardware. A program can name them: put a tag in a comment, like <b>; #POT0 Delay time</b>, and the labels follow it as you type. Tags are read from the comment part of a line, so they never collide with code, and hovering a renamed pot still shows which one it is.</i></li>
-                    <li><i><b>POT3-POT5</b> appear only when the loaded program declares <b>#extended</b>, and are named the same way. A hidden pot keeps whatever it was last set to, so removing the pragma never changes what you hear.</i></li>
-                    <li><i>The <b>Indicators</b> lamps follow <b>REG30</b> and <b>REG31</b>, the way the FV-2040 firmware drives its two PWM LEDs. Brightness is the register read as S1.23 - <b>0</b> is off, <b>1.0</b> is full - and a negative value is off rather than rectified, so a bipolar LFO lights the lamp for half of each cycle unless the program folds it first with <b>sof 0.5, 0.5</b>. The scale is linear on purpose: a program that wants a curve is two instructions from the curve it wants. Name them with <b>; #LED1 Tempo</b>, as with the pots. Nothing on the FV-1 reserves REG30 or REG31, so a program parking scratch there will light a lamp by accident - which is why the pedal firmware makes the lamps opt-in per program.</i></li>
+                    <li><i>The <b>Indicators</b> lamps follow <b>REG30</b> and <b>REG31</b>. Brightness is the register read as S1.23 - <b>0</b> is off, <b>1.0</b> is full - and a negative value is off rather than rectified, so a bipolar LFO lights the lamp for half of each cycle unless the program folds it first with <b>sof 0.5, 0.5</b>. The scale is linear on purpose: a program that wants a curve is two instructions from the curve it wants. Name them with <b>; #LED1 Tempo</b>, as with the pots. Nothing on the FV-1 reserves REG30 or REG31, so a program parking scratch there will light a lamp by accident.</i></li>
                     <li><i>With <b>Reset on assemble</b> ticked, every successful build is loaded straight into the simulator, so you can edit and re-assemble while it plays.</i></li>
                     <li><i><b>Bypass</b> compares against the dry signal, and <b>Reset</b> clears the simulated delay memory.</i></li>
                 </ul>
                 <p>The simulator models the 24-bit accumulator saturation and the 14-bit companded delay memory that give the FV-1 its character. LFO rates and depths follow the equations in Spin's application note AN-0001. The fractional interpolation inside <b>CHO</b> is approximated, so chorus and flange sound correct but are not sample-identical to hardware. Confirm on the pedal before shipping a design.</p>
-                <p>Your program is unchanged by the <b>Crystal</b> setting - it still runs 128 instructions per sample - but every delay and LFO sweep scales with the clock, and the fixed delay memory buys you proportionally less time. Changing it rebuilds the audio engine, so the delay memory is cleared. A program declaring <b>#extended</b> has 65536 words rather than 32768, and the maximum delay shown beside the crystal follows whichever is loaded.</p>
+                <p>Your program is unchanged by the <b>Crystal</b> setting - it still runs 128 instructions per sample - but every delay and LFO sweep scales with the clock, and the fixed delay memory buys you proportionally less time. Changing it rebuilds the audio engine, so the delay memory is cleared.</p>
 
                 <h4>MIDI Control</h4>
                 <p>The simulator can be played from a MIDI controller plugged into your computer. Press <b>Enable MIDI</b> in the <b>TEST DRIVE</b> tab, allow the browser's prompt, then choose an <b>Input</b> and <b>Channel</b>. The dot and the line beside the button show the last message that was accepted, which is the quickest way to tell whether a controller is reaching the page at all.</p>
                 <ul>
                     <li><i><b>CC50</b>, <b>CC51</b> and <b>CC52</b> sweep POT0, POT1 and POT2.</i></li>
-                    <li><i><b>CC53</b>, <b>CC54</b> and <b>CC55</b> sweep POT3, POT4 and POT5. These are mapped whether or not a program declares <b>#extended</b>, so a controller never has to be re-learned for a different program.</i></li>
                     <li><i><b>CC102</b> switches the effect: <b>0-63</b> bypasses, <b>64-127</b> engages.</i></li>
                 </ul>
                 <p>MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse. The chosen input and channel are remembered, and a controller unplugged and plugged back in is picked up again on its own.</p>
