@@ -278,9 +278,11 @@ function simPanic() {
 function simLoadProgram(opts) {
     if (typeof assembledData !== 'undefined' && assembledData) {
         simLoadedProgram = new Uint8Array(assembledData);
-        // The 512 bytes carry no pragma, so the core has to be told. Only the
+        // The image carries no pragma, so the core has to be told. Only the
         // tank size actually depends on it -- every other part of the extension
         // sets bits the FV-1 leaves at zero, so the decoder reads both alike.
+        // The whole buffer goes across, 512 bytes or 1024; setProgram reads the
+        // program length off the size rather than being told it.
         simExtended = typeof assembledExtended !== 'undefined' && !!assembledExtended;
         simUpdatePotVisibility();
         simUpdateRateInfo();
