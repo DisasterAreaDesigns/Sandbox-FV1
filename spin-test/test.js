@@ -2,6 +2,25 @@ const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
 
+// The app lives in Assembler/, not at the repo root. Named once here because
+// three separate copies of this path is how it came to be wrong in the first
+// place: the app moved and two of them were never going to be noticed.
+const APP_PAGE = path.resolve(__dirname, '../Assembler/index.html');
+
+// Every program is tested by reloading the page, and the app asks "You have
+// unsaved changes" on the way out as soon as the editor holds anything. The
+// second reload therefore raised a beforeunload dialog and sat behind it until
+// goto() timed out, which is what made the suite stall after one program.
+// Nothing here is a real decision -- the editor content is what the test just
+// typed in -- so take whatever a dialog offers and carry on.
+function acceptDialogs(page) {
+    page.on('dialog', async (dialog) => {
+        try {
+            await dialog.accept();
+        } catch (e) { /* already handled, or the page went away */ }
+    });
+}
+
 class FV1AssemblerTester {
     constructor() {
         this.browser = null;
@@ -21,6 +40,7 @@ class FV1AssemblerTester {
             ]
         });
         this.page = await this.browser.newPage();
+        acceptDialogs(this.page);
         
         // Prevent page from going idle
         await this.page.evaluateOnNewDocument(() => {
@@ -30,18 +50,15 @@ class FV1AssemblerTester {
             }, 30000);
         });
         
-        // Load local index.html from parent directory
-        const localPath = path.resolve(__dirname, '../index.html');
-        
         // Check if file exists
         try {
-            await fs.access(localPath);
-            console.log(`Loading local file: ${localPath}`);
+            await fs.access(APP_PAGE);
+            console.log(`Loading local file: ${APP_PAGE}`);
         } catch (error) {
-            throw new Error(`Cannot find index.html at ${localPath}. Please ensure the file exists.`);
+            throw new Error(`Cannot find index.html at ${APP_PAGE}. Please ensure the file exists.`);
         }
         
-        const fileUrl = `file://${localPath}`;
+        const fileUrl = `file://${APP_PAGE}`;
         
         await this.page.goto(fileUrl, {
             waitUntil: 'networkidle0',
@@ -56,6 +73,7 @@ class FV1AssemblerTester {
         try {
             console.log('Reinitializing page connection...');
             this.page = await this.browser.newPage();
+            acceptDialogs(this.page);
             
             // Prevent page from going idle
             await this.page.evaluateOnNewDocument(() => {
@@ -64,9 +82,7 @@ class FV1AssemblerTester {
                 }, 30000);
             });
             
-            // Load local index.html from parent directory
-            const localPath = path.resolve(__dirname, '../index.html');
-            const fileUrl = `file://${localPath}`;
+            const fileUrl = `file://${APP_PAGE}`;
             
             await this.page.goto(fileUrl, {
                 waitUntil: 'networkidle0',
@@ -96,8 +112,7 @@ class FV1AssemblerTester {
                 }
                 
                 // Navigate to fresh page
-                const localPath = path.resolve(__dirname, '../index.html');
-                const fileUrl = `file://${localPath}`;
+                const fileUrl = `file://${APP_PAGE}`;
                 
                 await this.page.goto(fileUrl, { 
                     waitUntil: 'networkidle0',
@@ -178,16 +193,18 @@ class FV1AssemblerTester {
                     }
                 }
                 
-                // Check if HEX download button exists and is enabled (indicates successful assembly)
+                // The HEX download button is enabled only by a successful
+                // assembly, so it is the one signal here that is not a text
+                // heuristic. Found by id: page.$x was removed in Puppeteer 22
+                // and threw on every program, so this silently read false and
+                // the result came entirely from matching strings in the page.
                 let isHexButtonEnabled = false;
                 try {
-                    // Use xpath to find button containing "Download HEX" text
-                    const hexButtons = await this.page.$x("//button[contains(text(), 'Download HEX')]");
-                    if (hexButtons.length > 0) {
-                        isHexButtonEnabled = await hexButtons[0].evaluate(el => !el.disabled && el.style.display !== 'none');
-                    }
+                    isHexButtonEnabled = await this.page.$eval(
+                        '#downloadPlainHexBtn',
+                        (el) => !el.disabled && el.style.display !== 'none');
                 } catch (e) {
-                    console.log('Could not check HEX button status');
+                    console.log('Could not check HEX button status:', e.message);
                 }
                 
                 // Alternative check - look for successful assembly indicators in text

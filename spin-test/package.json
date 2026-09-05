@@ -8,7 +8,8 @@
     "test:midi": "node midi-test.js",
     "test:emu": "node emu-test.js",
     "test:extended": "node extended-test.js",
-    "test:roundtrip": "node roundtrip-test.js"
+    "test:roundtrip": "node roundtrip-test.js",
+    "test:page": "node page-test.js"
   },
   "keywords": [],
   "author": "",

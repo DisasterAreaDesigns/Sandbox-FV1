@@ -686,11 +686,29 @@ function clearAssembly() {
 }
 
 // Check if editor has content (this will be overridden by monaco.js)
+// Does the editor hold anything worth not losing?
+//
+// This is the answer for a page whose editor has not loaded. Once Monaco is up,
+// monaco.js assigns window.hasEditorContent a version that also knows the
+// placeholder text, and that assignment REPLACES this function: a top-level
+// declaration in a classic script is already a property of window, so both
+// names are the one slot and every later call reaches monaco.js's version
+// instead of this one.
+//
+// Which is why this used to read `if (window.hasEditorContent) return
+// window.hasEditorContent()`. That is a call to itself whenever Monaco has not
+// loaded -- offline, or the CDN blocked -- and it recursed until the stack gave
+// out. The RangeError escaped the beforeunload handler below before it reached
+// preventDefault, so the browser saw a handler that did not object and closed
+// the window with no prompt at all, which is the opposite of what the handler
+// is for.
+//
+// So: no delegation, and no assuming an editor. `editor` is undefined until
+// Monaco loads, and getValue cannot be taken on faith.
 function hasEditorContent() {
-    if (window.hasEditorContent) {
-        return window.hasEditorContent();
-    }
-    return editor && editor.getValue().trim().length > 0;
+    return !!(typeof editor !== 'undefined' && editor &&
+        typeof editor.getValue === 'function' &&
+        editor.getValue().trim().length > 0);
 }
 
 
@@ -1295,9 +1313,22 @@ window.onclick = function(event) {
     }
 };
 
-// Prompt to save before leaving page
+// Prompt to save before leaving page.
+//
+// Wrapped because this is the one guard against losing an unedited session, and
+// a throw in here is silent: the browser sees a handler that did not
+// preventDefault and closes the window. If the check itself fails we no longer
+// know whether there is work in the editor, so ask -- a needless prompt on a
+// blank page is a smaller harm than a lost one that had a program in it.
 window.addEventListener('beforeunload', function(e) {
-    if (hasEditorContent()) {
+    let unsaved;
+    try {
+        unsaved = hasEditorContent();
+    } catch (err) {
+        console.error('hasEditorContent failed, prompting anyway:', err);
+        unsaved = true;
+    }
+    if (unsaved) {
         e.preventDefault();
         e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
         return e.returnValue;
