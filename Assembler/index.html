@@ -236,12 +236,11 @@
             }
             
             // FV-1 Opcodes data and initialization
-            // The extended reference describes FV-2040 hardware, and every one of
-            // its instructions is an error in a program that has not asked for
-            // them. So it appears when the source carries '#extended' and goes
-            // away again when the line is deleted -- following the editor rather
-            // than the last build, because you look an instruction up before you
-            // can assemble it.
+            // Every instruction in the extended reference is an error in a
+            // program that has not asked for it, so the section appears when the
+            // source carries '#extended' and goes away again when the line is
+            // deleted -- following the editor rather than the last build,
+            // because you look an instruction up before you can assemble it.
             window.refreshExtendedReference = function () {
                 let src = '';
                 try {
@@ -538,7 +537,7 @@
                                 "name": "#extended",
                                 "syntax": "#extended",
                                 "description": "Enable the extended instruction set for this program",
-                                "notes": "\u2022 A line of its own, anywhere in the source, and it may carry a trailing comment\n\u2022 Everything in this section needs it, and nothing in it exists without it\n\u2022 It targets FV-2040 hardware - an FV-1 does not implement any of this\n\u2022 A program without the line assembles to exactly the bytes it always did"
+                                "notes": "\u2022 A line of its own, anywhere in the source, and it may carry a trailing comment\n\u2022 Everything in this section needs it, and nothing in it exists without it\n\u2022 An FV-1 does not implement any of this\n\u2022 A program without the line assembles to exactly the bytes it always did"
                             },
                             {
                                 "name": "RMPAX",
@@ -1141,7 +1140,7 @@
                      error in a program that has not asked for it. -->
                 <div id="extendedHelpSection" style="display:none;">
                     <h4>Extended Instruction Set</h4>
-                    <p>This program carries <b>#extended</b>, which turns on an instruction set for the <b>FV-2040</b> - the FV-1 instruction set running on an RP2040, where the constraints that made sense in silicon in 1999 are off. <b>An FV-1 does not implement any of it</b>, so an extended build is not a program the Sandbox pedal can run. Delete the line and the extra instructions become errors again, which is the point: without it, this assembler produces exactly the bytes it always did.</p>
+                    <p>This program carries <b>#extended</b>, which turns on an instruction set beyond the FV-1's own - the same instruction set with the constraints that made sense in silicon in 1999 lifted. <b>An FV-1 does not implement any of it</b>, so an extended build is not a program the Sandbox pedal can run. Delete the line and the extra instructions become errors again, which is the point: without it, this assembler produces exactly the bytes it always did.</p>
                     <ul>
                         <li><i>Delay memory is <b>65536 words</b> rather than 32768 - two seconds at the standard crystal instead of one - and <b>MEM</b> may allocate all of it.</i></li>
                         <li><i><b>POT3</b>, <b>POT4</b> and <b>POT5</b> join the three the FV-1 has. The simulator shows sliders for them only while an extended program is loaded, and <b>CC53</b>-<b>CC55</b> sweep them.</i></li>

@@ -73,7 +73,7 @@ class FV1Core {
         this.ADCL = 0x14; this.ADCR = 0x15;
         // LED 1 and LED 2 read REG30 and REG31, the top two of the
         // general-purpose file. Nothing on the chip reserves them; this
-        // follows the FV-2040, which drives two PWM lamps from the same pair.
+        // follows the pedal firmware, which drives two PWM lamps from the pair.
         this.REG30 = 0x3E; this.REG31 = 0x3F;
         this.DACL = 0x16; this.DACR = 0x17;
         this.ADDR_PTR = 0x18;
@@ -536,7 +536,7 @@ class FV1Core {
     getDACL() { return this.regs[this.DACL] / this.ACC_MAX; }
     getDACR() { return this.regs[this.DACR] / this.ACC_MAX; }
 
-    // Lamp brightness, read the way the FV-2040 reads it: the register as
+    // Lamp brightness, read the way the firmware reads it: the register as
     // S1.23, 0 off and 1.0 full.
     //
     // Negative is off rather than rectified. Rectifying would double the rate

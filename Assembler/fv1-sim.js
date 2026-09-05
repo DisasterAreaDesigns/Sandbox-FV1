@@ -668,8 +668,8 @@ function simToggleBypass() {
 //
 // The lamps are LED1 and LED2 rather than LED0 and LED1: the pots are numbered
 // after the registers they read, and the lamps are not -- REG30 and REG31 are
-// ordinary scratch that the FV-2040 happens to watch, so they are numbered the
-// way a front panel numbers them.
+// ordinary scratch that the firmware happens to watch, so they are numbered
+// the way a front panel numbers them.
 
 function simParseControlNames(src) {
     const names = {pot: new Array(SIM_POT_COUNT).fill(null), led: new Array(2).fill(null)};
@@ -764,7 +764,7 @@ function simUpdateMeters(peak) {
     }
 }
 
-// Two lamps, driven from REG30 and REG31 the way the FV-2040 drives its pair.
+// Two lamps, driven from REG30 and REG31 the way the firmware drives its pair.
 // The brightness reaching here is the mean over an audio block rather than an
 // instant sample, which is what an eye does with a PWM lamp -- and it is why a
 // program blinking faster than the block rate reads as a dim lamp rather than

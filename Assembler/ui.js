@@ -842,17 +842,17 @@ function showMessage(msg, type) {
     debugLog(msg, className);
 }
 
-// An '#extended' build is FV-2040 code. It uses an opcode and address bits the
-// FV-1 does not implement, so an FV-1 will not refuse it -- it will run it as
-// something else. The Sandbox pedal has an FV-1 in it, which makes writing one
-// there almost always a mistake, but the same directory serves whatever is
-// plugged in, so this asks rather than refuses.
+// An '#extended' build uses an opcode and address bits the FV-1 does not
+// implement, so an FV-1 will not refuse it -- it will run it as something
+// else. The Sandbox pedal has an FV-1 in it, which makes writing one there
+// almost always a mistake, but the same directory serves whatever is plugged
+// in, so this asks rather than refuses.
 async function confirmExtendedForHardware(destination) {
     if (!assembledExtended) return true;
     return showConfirmDialog('Extended program',
-        'This program was assembled with #extended, which needs FV-2040 hardware. ' +
-        'An FV-1 does not implement RMPAX, RAND, the four extra LFOs or 16-bit ' +
-        'delay addressing, and will run this image as something else entirely. ' +
+        'This program was assembled with #extended. An FV-1 does not implement ' +
+        'RMPAX, RAND, the four extra LFOs or 16-bit delay addressing, and will ' +
+        'run this image as something else entirely. ' +
         'Write it to ' + destination + ' anyway?');
 }
 

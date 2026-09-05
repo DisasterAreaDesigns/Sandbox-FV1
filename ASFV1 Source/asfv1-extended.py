@@ -2,9 +2,9 @@
 # asfv1: Alternate FV-1 Assembler
 # Copyright (C) 2017-2019 Nathan Fraser
 #
-# MODIFIED 2026 for the FV-2040 project: an extended instruction set,
-# enabled per-source by a '#extended' line and otherwise dormant.  See
-# README.md.  Modifications are released under the same licence.
+# MODIFIED 2026: an extended instruction set, enabled per-source by a
+# '#extended' line and otherwise dormant.  See ThirdPartyNotices.txt.
+# Modifications are released under the same licence.
 #
 # An alternate assembler for the Spin Semiconductor FV-1 DSP.
 # For more information on the FV-1, refer to the Spin website:

@@ -50,7 +50,7 @@ class FV1Assembler {
         this.sym = null;
         this.lastLfoName = null;
 
-        // ---- extended instruction set (FV-2040) ---------------------------
+        // ---- extended instruction set ------------------------------------
         //
         // Nothing here exists unless the source carries a '#extended' line.
         // Everything it adds is additive -- wider fields in bits no assembled

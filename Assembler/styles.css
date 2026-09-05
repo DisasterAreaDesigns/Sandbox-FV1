@@ -1589,7 +1589,7 @@ body.dark-mode .opcodes-notes {
 }
 
 /* Indicator lamps ---------------------------------------------------------
-   Two of them, driven from REG30 and REG31 as on the FV-2040. --led carries
+   Two of them, driven from REG30 and REG31. --led carries
    the brightness the program asked for and everything visible is derived from
    it, so zero is genuinely dark rather than a dimmed-but-still-lit dot. The
    scale is linear, matching the firmware: predictable beats pretty for a

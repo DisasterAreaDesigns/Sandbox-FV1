@@ -307,7 +307,7 @@ const CHO_RDAL = 0x03;
 const RMP0 = 2, RMP1 = 3, SIN0 = 0;
 
 test('an unguarded WLDR leaves the ramp running; only JAM resets it', () => {
-    // The FV-2040 tree's tests/ops/ext_lfo_rmp.spn in its legacy RMP0/RMP1
+    // The reference core's tests/ops/ext_lfo_rmp.spn in its legacy RMP0/RMP1
     // form. Rate 16384 at range 4096 advances the ramp exactly one sample per
     // tick, and CHO RDAL hands back position/8192, so after a single tick the
     // wrapped position 4095 reads as 0.5 less one LSB of the ramp domain.
@@ -383,7 +383,7 @@ test('a sine range is applied once, not twice', () => {
     // The delay-tap reading and the CHO RDAL reading are one number in two
     // units -- delay samples, and delay samples with ten fractional bits below
     // them -- so applying the range to each separately would square it. The
-    // FV-2040 core keeps a single value for both readings for that reason.
+    // reference core keeps a single value for both readings for that reason.
     const core = load([
         wlds(1, 40, 16384),
         cho(CHO_RDAL, SIN1, F_REG, 0),
