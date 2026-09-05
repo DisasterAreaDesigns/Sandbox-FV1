@@ -41,7 +41,12 @@
 
 class FV1Core {
     constructor() {
-        this.PROG_LEN = 128;
+        // The FV-1 holds 128 instructions and runs all of them every sample.
+        // Here the length is a property of the image rather than of the
+        // machine -- setProgram reads it off the size -- because a program
+        // built with '#extended' may be 256 instructions in 1024 bytes.
+        this.PROG_LEN_MAX = 256;
+        this.PROG_LEN = 128;             // this program's, until setProgram says
         // The tank is always allocated at the extended size -- 128 KB, which is
         // nothing here -- and the mask is what decides how much of it a program
         // can see. An FV-1 program addresses 15 bits and wraps at 32768; one
@@ -104,11 +109,11 @@ class FV1Core {
         this.SAMPLE_RATE = 32768;
 
         // Decoded program: parallel typed arrays keep the inner loop fast.
-        this.iOp = new Int32Array(this.PROG_LEN);
-        this.iA = new Int32Array(this.PROG_LEN);   // coefficient / mask
-        this.iB = new Int32Array(this.PROG_LEN);   // address / register / offset
-        this.iC = new Int32Array(this.PROG_LEN);   // flags / secondary operand
-        this.iD = new Int32Array(this.PROG_LEN);   // CHO address / offset
+        this.iOp = new Int32Array(this.PROG_LEN_MAX);
+        this.iA = new Int32Array(this.PROG_LEN_MAX);   // coefficient / mask
+        this.iB = new Int32Array(this.PROG_LEN_MAX);   // address / register / offset
+        this.iC = new Int32Array(this.PROG_LEN_MAX);   // flags / secondary operand
+        this.iD = new Int32Array(this.PROG_LEN_MAX);   // CHO address / offset
 
         this.delay = new Int16Array(this.DELAY_LEN);  // holds compressed words
         this.regs = new Float64Array(64);
@@ -191,6 +196,12 @@ class FV1Core {
         }
         this.extended = !!extended;
         this.DELAY_MASK = extended ? this.DELAY_MASK_EXT : 0x7FFF;
+        // One program, never a bank: 1024 bytes is a 256 instruction image
+        // and anything smaller is the FV-1's 128. The pragma does not decide
+        // this -- a short extended program is still 512 bytes -- so the size
+        // is read rather than passed.
+        this.PROG_LEN = bytes.length >= this.PROG_LEN_MAX * 4
+                      ? this.PROG_LEN_MAX : 128;
         for (let i = 0; i < this.PROG_LEN; i++) {
             const o = i * 4;
             // Big-endian, matching generateMachineCode()
@@ -505,7 +516,8 @@ class FV1Core {
 
     // ---- the sample loop ------------------------------------------------
 
-    // Runs one full 128-instruction pass. adcL/adcR are floats in [-1, 1].
+    // Runs one full pass over the program -- 128 instructions, or 256 for an
+    // image built long. adcL/adcR are floats in [-1, 1].
     // Returns nothing; read outputs with getDAC().
     run(adcL, adcR) {
         if (!this.hasProgram) return;

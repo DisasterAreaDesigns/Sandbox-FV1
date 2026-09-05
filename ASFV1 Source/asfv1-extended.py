@@ -39,6 +39,7 @@ import struct
 # Constants
 VERSION = '1.2.7'
 PROGLEN = 128
+PROGLEN_EXT = 256	# extended: two program slots' worth of instructions
 DELAYSIZE = 32767
 DELAYSIZE_EXT = 65535	# extended: 16 bit delay addressing
 MAXERR = 10	# abort assembly if too many errors found
@@ -247,7 +248,8 @@ def op_gen(mcode, tbl=None):
 class fv1parse(object):
     def __init__(self, source=None, clamp=True,
                  spinreals=False, wfunc=None, efunc=None):
-        self.program = bytearray(512)
+        self.program = bytearray(PROGLEN*4)
+        self.proglen = PROGLEN	# instructions this source may use
         self.doclamp = clamp
         self.spinreals = spinreals
         self.dowarn = wfunc
@@ -391,6 +393,7 @@ class fv1parse(object):
         self.op_tbl.update(ext_op_tbl)
         self.delaysize = DELAYSIZE_EXT
         self.addrmax = M16
+        self.proglen = PROGLEN_EXT
         # Contiguous, and stopping short of 0x1f: a multiplexer gives
         # eight channels, so 0x1c-0x1f is left for POT6-POT9 rather than
         # taking the tidier-looking 0x13 next to POT2 and splitting the
@@ -410,9 +413,20 @@ class fv1parse(object):
         self.dowarn('info: Read {} instructions from input'.format(
                 proglen))
 
+        # A program that fits the FV-1's 128 words is emitted as 128
+        # whatever the pragma allows, so an extended source that is short
+        # produces exactly the image it always did.  Only one that does
+        # not fit grows, and then to 256 -- two program slots, which is
+        # how a bank file already divides.  The size of the image is what
+        # tells a loader which it is holding; there is no flag to lose.
+        image = PROGLEN
+        if proglen > PROGLEN:
+            image = PROGLEN_EXT
+        self.program = bytearray(image*4)
+
         # pad free space with empty SKP instructions
         icnt = proglen
-        while icnt < PROGLEN:
+        while icnt < image:
             self.pl.append({'cmd':['SKP',0x00,0x00],
                             'addr':icnt,
                             'target':None})
@@ -1134,7 +1148,7 @@ class fv1parse(object):
         self.__accept__('MNEMONIC')
         if mnemonic in EXT_ONLY_OPS and not self.extended:
             self.parseerror('{} requires #extended'.format(mnemonic))
-        if self.icnt >= PROGLEN:
+        if self.icnt >= self.proglen:
             self.parseerror('Max program exceeded by {}'.format(mnemonic))
         if mnemonic in ['AND', 'OR', 'XOR', ]:
             mask = self.__s_23__(mnemonic)
@@ -1653,7 +1667,16 @@ def main():
                   clamp=args.clamp, spinreals=args.spinreals,
                   wfunc=dowarn, efunc=error)
     fp.parse()
-    
+
+    # A 256 instruction program is two slots wide, so it cannot start at
+    # the last one.  Silently writing past the end of a bank is the kind
+    # of thing that shows up as slot 7 having become noise.
+    if args.p is not None and len(fp.program) > PROGLEN*4 and args.p > 6:
+        error('error: a {} instruction program occupies two slots, '
+              'so -p {} would run past the bank'.format(
+                      len(fp.program)//4, args.p))
+        sys.exit(-1)
+
     ofile = None
     try:
         ofile = open(args.outfile, 'r+b')	# existing file

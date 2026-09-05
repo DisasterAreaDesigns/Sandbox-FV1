@@ -50,7 +50,7 @@ function build(source, opts = {}) {
     asm.parse();
     asm.generateMachineCode();
     const words = [];
-    for (let i = 0; i < 128; i++) {
+    for (let i = 0; i < asm.program.length / 4; i++) {
         const o = i * 4;
         words.push(((asm.program[o] << 24 | asm.program[o + 1] << 16 |
             asm.program[o + 2] << 8 | asm.program[o + 3]) >>> 0));
@@ -266,6 +266,42 @@ test('line numbers survive the pragma being blanked', () => {
 // The assembler and the core have to agree, and only running the pair shows it:
 // a select bit read one way and written another passes both halves separately.
 
+// ---- program length -------------------------------------------------------
+// The FV-1 runs 128 instructions every sample whether a program uses them or
+// not, so there the length is the budget. Here it is a container, and the
+// pragma makes it two slots wide.
+
+const longSrc = (n) => EXT + 'sof 1.0, 0\n'.repeat(n);
+
+test('128 instructions still assemble to one slot', () => {
+    const r = build(longSrc(128));
+    assert.ok(r.ok, r.errors);
+    assert.equal(r.asm.program.length, 512);
+});
+
+test('129 grows the image to two slots', () => {
+    const r = build(longSrc(129));
+    assert.ok(r.ok, r.errors);
+    assert.equal(r.asm.program.length, 1024);
+    assert.equal(op(r.words[128]), 0x0D, 'the 129th instruction is not SOF');
+    assert.ok(r.words.slice(129).every((w) => w === 0x11), 'the tail is not SKP');
+});
+
+test('256 instructions assemble and 257 do not', () => {
+    assert.ok(build(longSrc(256)).ok);
+    assert.match(build(longSrc(257)).errors, /Max program length exceeded/);
+});
+
+test('129 without the pragma is refused as it always was', () => {
+    const r = build('sof 1.0, 0\n'.repeat(129));
+    assert.match(r.errors, /Max program length exceeded/);
+});
+
+test('a skip further than 63 is still refused', () => {
+    const r = build(EXT + 'skp 0, over\n' + 'sof 1.0, 0\n'.repeat(64) + 'over:\nclr\n');
+    assert.match(r.errors, /too large|Offset/i);
+});
+
 /** Assemble and load into a core, with the extension flag the source implies. */
 function core(source) {
     const r = build(source);
@@ -284,6 +320,23 @@ function outputs(c, n, input = 0) {
     }
     return seen;
 }
+
+test('the core runs past instruction 128 of a long program', () => {
+    // 130 instructions: the output is written by the last one, so a core that
+    // stopped at 128 would leave DACL at whatever instruction 127 put there.
+    const src = EXT + 'rdax adcl, 1.0\n' + 'sof 1.0, 0\n'.repeat(127) +
+        'wrax dacl, 0\n' + 'sof 1.0, 0\n';
+    const r = build(src);
+    assert.ok(r.ok, r.errors);
+    assert.equal(r.asm.program.length, 1024);
+
+    const c = new FV1Core();
+    assert.ok(c.setProgram(r.asm.program, true, r.asm.extended));
+    assert.equal(c.PROG_LEN, 256, 'the image length did not reach the core');
+    c.run(0.5, 0);
+    assert.ok(Math.abs(c.getDACL() - 0.5) < 1e-5,
+        `instruction 129 never ran: DACL is ${c.getDACL()}`);
+});
 
 test('a delay past 32768 words needs the extended tank', () => {
     const src = EXT + 'mem d 40000\nrdax adcl, 1.0\nwra d, 0\nrda d#, 1.0\nwrax dacl, 0\n';
@@ -506,7 +559,12 @@ test('every source above assembles the same as asfv1-extended', () => {
 
         const ref = fs.readFileSync(bin);
         compared++;
-        for (let i = 0; i < 128; i++) {
+        if (ref.length !== mine.words.length * 4) {
+            differ.push([source, `image is ${mine.words.length * 4} bytes, ` +
+                `asfv1-extended made ${ref.length}`]);
+            continue;
+        }
+        for (let i = 0; i < mine.words.length; i++) {
             const w = ref.readUInt32BE(i * 4);
             if (w !== mine.words[i]) {
                 differ.push([source, `instruction ${i}: ` +
