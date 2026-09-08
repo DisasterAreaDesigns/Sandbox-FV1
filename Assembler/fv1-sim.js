@@ -1,8 +1,14 @@
 // FV-1 Simulator -- Web Audio front end for fv1-emu.js
 //
-// Builds an AudioWorklet that runs the FV-1 core at the chip's native
-// 32768 Hz, feeds it a test tone, an audio file or live input, and lets the
-// three pots be swept while it plays.
+// Builds an AudioWorklet that runs the FV-1 core at the crystal rate, feeds it
+// a test tone, an audio file or live input, and lets the three pots and the
+// crystal be swept while it plays.
+//
+// The graph itself runs at the device's own rate and FV1Clock converts between
+// that and the crystal, so changing the crystal is a message rather than a
+// rebuild. Doing it the other way -- an AudioContext built at the crystal rate
+// -- meant a teardown per change, which cleared delay memory and restarted
+// whatever was playing.
 //
 // The worklet is assembled at runtime from FV1Core.toString() and loaded via
 // a blob: URL. That is deliberate -- addModule() on a plain script file is
@@ -25,23 +31,29 @@ let simRunning = false;
 let simBypass = false;
 let simLoadedProgram = null;
 
-// The FV-1's sample rate is its crystal frequency, so the selector is really
-// a crystal swap: a program's behaviour in samples never changes, but every
-// delay and sweep scales in absolute time. 32768 Hz is the stock part.
+// The FV-1's sample rate is its crystal frequency, so the control is really a
+// crystal swap: a program's behaviour in samples never changes, but every delay
+// and sweep scales in absolute time. 32768 Hz is the stock part.
 const SIM_RATE = 32768;
 let simRate = SIM_RATE;
+
+// Stand-in rate for decoding a file chosen before the engine has been built.
+const SIM_DECODE_RATE = 48000;
 
 // ---- worklet source -------------------------------------------------------
 
 function buildWorkletSource() {
-    if (typeof FV1Core === 'undefined') {
+    if (typeof FV1Core === 'undefined' || typeof FV1Clock === 'undefined') {
         throw new Error('fv1-emu.js not loaded');
     }
     const processor = [
         'class FV1Processor extends AudioWorkletProcessor {',
-        '    constructor() {',
+        '    constructor(options) {',
         '        super();',
         '        this.core = new FV1Core();',
+        '        this.clock = new FV1Clock(this.core, sampleRate);',
+        '        this.clock.setRate((options && options.processorOptions &&',
+        '            options.processorOptions.rate) || sampleRate);',
         '        this.pots = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5];',
         '        this.peakL = 0;',
         '        this.peakR = 0;',
@@ -54,8 +66,11 @@ function buildWorkletSource() {
         '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
         '            } else if (d.type === "pots") {',
         '                this.pots = d.values;',
+        '            } else if (d.type === "rate") {',
+        '                this.clock.setRate(d.rate);',
         '            } else if (d.type === "reset") {',
         '                this.core.reset();',
+        '                this.clock.reset();',
         '            }',
         '        };',
         '    }',
@@ -69,9 +84,9 @@ function buildWorkletSource() {
         '        const inR = hasIn && input.length > 1 ? input[1] : inL;',
         '        for (let i = 0; i < outL.length; i++) {',
         '            this.core.setPots(this.pots);',
-        '            this.core.run(inL ? inL[i] : 0, inR ? inR[i] : 0);',
-        '            const l = this.core.getDACL();',
-        '            const r = this.core.getDACR();',
+        '            this.clock.step(inL ? inL[i] : 0, inR ? inR[i] : 0);',
+        '            const l = this.clock.outL;',
+        '            const r = this.clock.outR;',
         '            outL[i] = l;',
         '            if (outR) outR[i] = r;',
         '            const al = Math.abs(l);',
@@ -99,7 +114,8 @@ function buildWorkletSource() {
         'registerProcessor("fv1-processor", FV1Processor);'
     ].join('\n');
 
-    return FV1Core.toString() + '\n' + processor;
+    return FV1Core.toString() + '\n' + FV1Lowpass.toString() + '\n' +
+        FV1Clock.toString() + '\n' + processor;
 }
 
 // ---- engine ---------------------------------------------------------------
@@ -109,9 +125,10 @@ function buildWorkletSource() {
 // with null gain nodes, so a second Play press skipped setup entirely and
 // failed deep inside connect() with an unhelpful message.
 async function simInitEngine() {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: simRate
-    });
+    // No sampleRate is asked for: the graph runs at whatever the device runs
+    // at, which is the one rate the browser never has to resample on the way
+    // out, and the crystal is FV1Clock's business rather than the context's.
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
     let node;
     try {
@@ -125,7 +142,11 @@ async function simInitEngine() {
         node = new AudioWorkletNode(ctx, 'fv1-processor', {
             numberOfInputs: 1,
             numberOfOutputs: 1,
-            outputChannelCount: [2]
+            outputChannelCount: [2],
+            // The crystal has to travel with construction as well as by
+            // message: a rate posted here would not be read until the first
+            // block had already been rendered at the wrong clock.
+            processorOptions: {rate: simRate}
         });
     } catch (err) {
         try { await ctx.close(); } catch (e) { /* already closing */ }
@@ -152,6 +173,14 @@ async function simInitEngine() {
     dryGain.connect(outputGain);
     outputGain.connect(ctx.destination);
     dryGain.gain.value = 0;
+
+    // The file may have been decoded against a guessed rate, back when there
+    // was no context to ask for the real one. Now there is one -- and this runs
+    // before simCtx is published, so a failed decode still leaves no engine.
+    if (simFileBuffer && simFileBytes &&
+        simFileBuffer.sampleRate !== ctx.sampleRate) {
+        await simRedecodeFile(ctx);
+    }
 
     simCtx = ctx;
     simNode = node;
@@ -320,24 +349,32 @@ function simSetProgramState(text, cls) {
 // 2 kHz burst rather than a bare one-sample impulse. An impulse puts most of
 // its energy above where a laptop speaker can reproduce it, so it barely
 // registers, and its DC content walks the state of anything with a feedback
-// path. A 2 kHz burst is audible, sits below Nyquist even at the 8.192 kHz
-// crystal, and at 3 ms is still brief enough to read as an impulse against the
-// delay times these programs work in.
+// path. A 2 kHz burst is audible and at 3 ms is still brief enough to read as
+// an impulse against the delay times these programs work in.
 const SIM_CLICK_PERIOD = 1.0;      // seconds between clicks
 const SIM_CLICK_FREQ = 2000;       // Hz
 const SIM_CLICK_CYCLES = 6;        // whole cycles per burst -- 3 ms at 2 kHz
 
-// A whole number of cycles, so the window closes on a zero crossing.
-function simClickLength(sampleRate) {
-    return Math.round(SIM_CLICK_CYCLES * sampleRate / SIM_CLICK_FREQ);
+// 2 kHz is clear of Nyquist for every crystal down to 8 kHz, so this only bites
+// at the bottom of the slider's range -- where a fixed 2 kHz would land on or
+// above Nyquist and alias into a tone that has nothing to do with a click.
+function simClickFreq(coreRate) {
+    return Math.min(SIM_CLICK_FREQ, coreRate / 4);
+}
+
+// A whole number of cycles, so the window closes on a zero crossing. The burst
+// is written into a buffer at the graph's rate but its frequency follows the
+// crystal, since the crystal is what decides where the core's Nyquist is.
+function simClickLength(bufRate, coreRate) {
+    return Math.round(SIM_CLICK_CYCLES * bufRate / simClickFreq(coreRate));
 }
 
 // Write one click into the head of `data` and leave the rest silent. Pure, so
 // the headless tests can check the shape without a Web Audio context.
-function simFillClick(data, sampleRate) {
-    const n = simClickLength(sampleRate);
+function simFillClick(data, bufRate, coreRate) {
+    const n = simClickLength(bufRate, coreRate);
     const len = Math.min(data.length, n);
-    const w = 2 * Math.PI * SIM_CLICK_FREQ / sampleRate;
+    const w = 2 * Math.PI * simClickFreq(coreRate) / bufRate;
     for (let i = 0; i < len; i++) {
         // A Hann window over whole cycles both starts and ends at zero, so the
         // loop point never puts a step in the signal, and it leaves the burst
@@ -378,7 +415,7 @@ async function simConnectSource() {
         // without measuring anything.
         const buf = simCtx.createBuffer(1, Math.round(simCtx.sampleRate * SIM_CLICK_PERIOD),
             simCtx.sampleRate);
-        simFillClick(buf.getChannelData(0), simCtx.sampleRate);
+        simFillClick(buf.getChannelData(0), simCtx.sampleRate, simRate);
         const node = simCtx.createBufferSource();
         node.buffer = buf;
         node.loop = true;
@@ -399,11 +436,7 @@ async function simConnectSource() {
             simStatus('Choose an audio file first', 'warn');
             return false;
         }
-        const node = simCtx.createBufferSource();
-        node.buffer = simFileBuffer;
-        node.loop = true;
-        node.start();
-        simSource = node;
+        simSource = simStartFileSource();
     } else if (type === 'input') {
         try {
             simStream = await navigator.mediaDevices.getUserMedia({
@@ -426,11 +459,47 @@ async function simConnectSource() {
     return true;
 }
 
+// The loop is stated in full -- the flag and both loop points -- rather than
+// left to `loop` alone, and the ended handler behind it starts a fresh node if
+// the buffer runs out anyway. A source that quietly stops at the end of the
+// file leaves the panel showing Stop-able, metered, running, with nothing
+// coming out of it, which reads as the simulator having died rather than as the
+// file having finished.
+function simStartFileSource() {
+    const node = simCtx.createBufferSource();
+    node.buffer = simFileBuffer;
+    node.loop = true;
+    node.loopStart = 0;
+    node.loopEnd = simFileBuffer.duration;
+    node.onended = () => {
+        // stop() fires this too. Every teardown path clears simSource before
+        // stopping, so an identity check is what separates "the file ran out"
+        // from "we ended it on purpose". The duration test keeps an empty
+        // decode from spinning here forever.
+        if (!simRunning || simSource !== node) return;
+        if (simSourceType() !== 'file') return;
+        if (!simFileBuffer || simFileBuffer.duration <= 0) return;
+        if (!simCtx || !simInputGain || !simDryGain) return;
+        simSource = null;
+        try { node.disconnect(); } catch (e) { /* already gone */ }
+        const next = simStartFileSource();
+        next.connect(simInputGain);
+        next.connect(simDryGain);
+        simSource = next;
+    };
+    node.start();
+    return node;
+}
+
 function simDisconnectSource() {
     if (simSource) {
-        try { simSource.stop(); } catch (e) { /* live input has no stop() */ }
-        try { simSource.disconnect(); } catch (e) { /* already gone */ }
+        const node = simSource;
+        // Cleared first: stop() reaches the file source's ended handler, which
+        // restarts the loop unless it can see that this node is no longer the
+        // one the simulator is playing.
         simSource = null;
+        try { node.stop(); } catch (e) { /* live input has no stop() */ }
+        try { node.disconnect(); } catch (e) { /* already gone */ }
     }
     if (simStream) {
         simStream.getTracks().forEach(t => t.stop());
@@ -442,19 +511,24 @@ function simDisconnectSource() {
 // browser does the resampling once, at decode time. A throwaway offline
 // context is used when the engine is not up, so a failed decode never leaves
 // a half-built engine behind in simCtx.
-async function simDecodeFile(bytes) {
-    const decodeCtx = simCtx || new (window.OfflineAudioContext ||
-        window.webkitOfflineAudioContext)(1, 1, simRate);
+async function simDecodeFile(bytes, ctx) {
+    // Before the engine exists there is no way to know the device's rate, so a
+    // throwaway offline context stands in at a common one. simInitEngine
+    // decodes again if the guess turns out to be wrong; either way an
+    // AudioBufferSourceNode would resample a mismatched buffer for us, so the
+    // guess costs quality at worst, never pitch.
+    const decodeCtx = ctx || simCtx || new (window.OfflineAudioContext ||
+        window.webkitOfflineAudioContext)(1, 1, SIM_DECODE_RATE);
     return decodeCtx.decodeAudioData(bytes.slice(0));
 }
 
-async function simRedecodeFile() {
+async function simRedecodeFile(ctx) {
     if (!simFileBytes) return;
     try {
-        simFileBuffer = await simDecodeFile(simFileBytes);
+        simFileBuffer = await simDecodeFile(simFileBytes, ctx);
     } catch (err) {
         simStatus('Could not re-decode ' + (simFileName || 'the audio file') +
-            ' at the new rate: ' + err.message, 'error');
+            ': ' + err.message, 'error');
     }
 }
 
@@ -503,46 +577,119 @@ function simOnToneFreqChange() {
 
 // ---- clock ----------------------------------------------------------------
 
-// AudioContext.sampleRate is fixed at construction, so changing the crystal
-// means tearing the engine down and rebuilding it. That clears delay memory,
-// exactly as pulling the chip's power would.
-async function simOnRateChange() {
+// The crystal can be set two ways: the dropdown, which lists parts you can
+// actually buy, and the slider, which covers everything between 4 kHz and
+// 48 kHz. They drive the same rate and each follows the other -- the dropdown
+// reads 'Custom' whenever the slider is sitting between two named parts.
+//
+// The slider stops at 48 kHz. The two presets above it stay reachable from the
+// dropdown and pin the slider to its top end while they are selected.
+const SIM_RATE_MIN = 4000;
+const SIM_RATE_MAX = 48000;
+// The dropdown reaches past the slider, so the clamp that keeps a stray value
+// out of the core has to be the wider of the two.
+const SIM_RATE_MAX_HARD = 64000;
+
+// Where a 7-bit MIDI value lands. The slider's own range, quantised to its own
+// step, so a controller and the thumb cannot disagree about what CC value 64
+// means.
+const SIM_RATE_STEP = 32;
+
+function simRateFromMidi(value) {
+    const span = SIM_RATE_MAX - SIM_RATE_MIN;
+    const raw = SIM_RATE_MIN + (Math.max(0, Math.min(127, value)) / 127) * span;
+    return SIM_RATE_MIN + Math.round((raw - SIM_RATE_MIN) / SIM_RATE_STEP) * SIM_RATE_STEP;
+}
+
+function simOnRateChange() {
     const sel = document.getElementById('simRate');
     const rate = sel ? parseFloat(sel.value) : SIM_RATE;
-    if (!isFinite(rate) || rate === simRate) return;
-    simRate = rate;
+    // 'Custom' names where the slider already is rather than a rate of its own,
+    // so picking it out of the list is deliberately a no-op.
+    if (!isFinite(rate)) {
+        simSyncRateControls();
+        return;
+    }
+    simApplyRate(rate);
+}
+
+// The slider applies as it moves. That is the whole point of clocking the core
+// separately from the graph: the crystal is a message to the worklet, so it can
+// be swept while a program plays, with delay memory and whatever is feeding it
+// both left alone.
+function simOnRateSliderInput() {
+    simApplyRate(simNumber('simRateSlider', SIM_RATE), {from: 'slider'});
+}
+
+// Set the crystal from any source. `opts.from` names the control that moved, so
+// a slider is not fought for the thumb while it is the thing being dragged, and
+// `opts.defer` sends the rate to the core but leaves the display for the caller
+// -- which is how MIDI keeps the clock responding at full rate while its
+// redraws are batched. The same shape as simSetPot, for the same reasons.
+function simApplyRate(rate, opts) {
+    if (!isFinite(rate)) return;
+    const r = Math.max(SIM_RATE_MIN, Math.min(SIM_RATE_MAX_HARD, rate));
+    if (r === simRate) return;
+    const wasClickFreq = simClickFreq(simRate);
+    simRate = r;
+    if (simNode) simNode.port.postMessage({type: 'rate', rate: simRate});
+
+    // The click burst is built to sit under the core's Nyquist, so at the very
+    // bottom of the range its frequency changes -- and the buffer holding it
+    // has to be rebuilt. Everywhere above 8 kHz the frequency is the same at
+    // both ends of the move and the source is left playing.
+    if (simRunning && simSourceType() === 'click' &&
+        simClickFreq(simRate) !== wasClickFreq) {
+        simConnectSource();
+    }
+
+    if (opts && opts.defer) return;
+    simRefreshRateDisplay(opts && opts.from);
+    if (!simRunning) simStatus('Clock set to ' + simRateLabel(), '');
+}
+
+function simRefreshRateDisplay(from) {
+    simSyncRateControls(from);
     simUpdateRateInfo();
-
-    const wasRunning = simRunning;
-    if (simRunning) simStop();
-    if (simNode) simTeardownEngine();
-    await simRedecodeFile();
-
-    if (wasRunning) {
-        await simStart();
-    } else {
-        simStatus('Clock set to ' + simRateLabel(), '');
-    }
 }
 
-// The browser is free to refuse the rate we asked for, and some do. The core
-// is clocked by the context, so a refusal silently rescales every delay and
-// sweep -- report the rate actually in use rather than let it pass as
-// correct. This is the only place the running rate is announced, so the
-// warning cannot be overwritten by a later 'Running at' message.
+// Put both controls where simRate actually is. The slider is clamped to its own
+// range so a dropdown-only preset above 48 kHz leaves it at the top rather than
+// wherever it happened to be, while the readout keeps telling the truth.
+function simSyncRateControls(from) {
+    const slider = document.getElementById('simRateSlider');
+    if (slider && from !== 'slider') {
+        slider.value = String(Math.max(SIM_RATE_MIN, Math.min(SIM_RATE_MAX, simRate)));
+    }
+    simSetRateLabel(simRate);
+    simSyncRateSelect(simRate);
+}
+
+function simSetRateLabel(rate) {
+    const out = document.getElementById('simRateValue');
+    if (out) out.textContent = simRateLabel(rate);
+}
+
+function simSyncRateSelect(rate) {
+    const sel = document.getElementById('simRate');
+    if (!sel) return;
+    const match = Array.prototype.find.call(sel.options,
+        (o) => parseFloat(o.value) === rate);
+    sel.value = match ? match.value : 'custom';
+}
+
+// The crystal is the core's own clock now, so it is honoured whatever rate the
+// browser hands the graph and there is nothing left to warn about. The graph's
+// rate is still worth naming: it is the one number here the user did not pick.
 function simReportRate() {
-    const actual = simCtx ? simCtx.sampleRate : simRate;
-    if (Math.abs(actual - simRate) > 1) {
-        simStatus('Browser gave ' + Math.round(actual) + ' Hz, not ' +
-            Math.round(simRate) + ' Hz - delay and LFO times are off by ' +
-            (actual / simRate).toFixed(2) + 'x', 'warn');
-    } else {
-        simStatus('Running at ' + Math.round(actual) + ' Hz', 'ok');
-    }
+    const graph = simCtx ? Math.round(simCtx.sampleRate) : 0;
+    simStatus('Running at ' + simRateLabel() +
+        (graph ? ' (audio out ' + graph + ' Hz)' : ''), 'ok');
 }
 
-function simRateLabel() {
-    return (simRate / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kHz';
+function simRateLabel(rate) {
+    const r = rate === undefined ? simRate : rate;
+    return (r / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kHz';
 }
 
 // The delay RAM is a fixed number of words -- 32768, or 65536 under
@@ -619,6 +766,7 @@ function simSendPots() {
 // Read-only view of what the core is running, for tests and for MIDI to
 // compare against before it decides a message changed anything.
 window.simGetPots = () => simPots.slice();
+window.simGetRate = () => simRate;
 
 function simApplyLevels() {
     if (!simCtx) return;
@@ -823,6 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
     simSendPots();
     simOnSourceChange();
     simOnToneFreqChange();
+    simSyncRateControls();
     simUpdateRateInfo();
     if (typeof AudioWorkletNode === 'undefined') {
         simStatus('This browser has no AudioWorklet support - simulator unavailable', 'error');

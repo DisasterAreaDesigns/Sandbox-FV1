@@ -9,11 +9,18 @@
 //
 //     CC50 -> POT0    CC51 -> POT1    CC52 -> POT2
 //     CC53 -> POT3    CC54 -> POT4    CC55 -> POT5
+//     CC60 -> clock, 0-127 across 4 kHz to 48 kHz
 //     CC102 -> bypass, 0-63 bypassed, 64-127 engaged
 //
 // CC50-52 are the Disaster Area assignments. POT3-POT5 exist only under
 // '#extended' and have no assignment to match, so they continue the run rather
 // than start a second one somewhere else.
+//
+// The clock is not a control any pedal has -- swapping the crystal is a
+// soldering job -- so CC60 sits clear of the pot run rather than extending it.
+// Nothing else here responds to MIDI beat clock: 0xF8 and the rest of the
+// system-realtime messages are still ignored below. This is the crystal, not
+// tempo sync.
 //
 // The pedal itself has no MIDI input. This is the simulator only.
 
@@ -24,6 +31,7 @@ const MIDI_MAP = {
     53: 'pot3',
     54: 'pot4',
     55: 'pot5',
+    60: 'clock',
     102: 'bypass'
 };
 
@@ -41,6 +49,7 @@ let midiChannel = 0;           // 0 = omni, else 1-16
 // batched to one frame. A backgrounded tab therefore still responds to the
 // controller, and catches its display up when it is looked at again.
 let midiDirty = [false, false, false, false, false, false];
+let midiClockDirty = false;
 let midiPendingText = null;
 let midiFrame = 0;
 let midiFlashTimer = null;
@@ -166,6 +175,21 @@ function midiHandleMessage(data) {
         return;
     }
 
+    if (target === 'clock') {
+        // Rides the same frame coalescer as the pots: the crystal reaches the
+        // core straight away, and the slider, the readout and the delay-time
+        // line are redrawn once a frame however fast the controller sweeps.
+        if (typeof simRateFromMidi !== 'function' ||
+            typeof simApplyRate !== 'function') return;
+        const rate = simRateFromMidi(value);
+        simApplyRate(rate, {from: 'midi', defer: true});
+        midiClockDirty = true;
+        midiNote('CC' + cc + ' \u2192 clock \u00b7 ' +
+            (rate / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kHz');
+        midiSchedule();
+        return;
+    }
+
     const pot = +target.slice(3);
     if (typeof simSetPot === 'function') {
         simSetPot(pot, value / 127, {from: 'midi', defer: true});
@@ -213,6 +237,12 @@ function midiFlushDisplay() {
         midiDirty[i] = false;
         if (typeof simRefreshPotDisplay === 'function') {
             simRefreshPotDisplay(i, 'midi');
+        }
+    }
+    if (midiClockDirty) {
+        midiClockDirty = false;
+        if (typeof simRefreshRateDisplay === 'function') {
+            simRefreshRateDisplay('midi');
         }
     }
     midiFlushNote();

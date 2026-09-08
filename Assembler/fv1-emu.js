@@ -818,6 +818,193 @@ class FV1Core {
     }
 }
 
+// A fourth-order Butterworth lowpass, as two cascaded biquads. Used either
+// side of the clock conversion below, where the only requirement is a clean
+// roll-off that can be retuned while audio is running -- so the sections are
+// kept in transposed direct form II, whose state stays bounded when the
+// coefficients move under it.
+//
+// Self-contained, for the same reason FV1Core is: fv1-sim.js stringifies these
+// classes to build the AudioWorklet.
+class FV1Lowpass {
+    constructor() {
+        this.s = [0, 0, 0, 0];      // two states per section
+        this.c = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        this.bypass = true;
+    }
+
+    // A cutoff of zero, or one at or above Nyquist, is a request to pass the
+    // signal through untouched rather than an error.
+    set(fc, fs) {
+        if (!(fc > 0) || !(fs > 0) || fc >= fs * 0.5) {
+            this.bypass = true;
+            return;
+        }
+        this.bypass = false;
+        const q = [0.54119610, 1.30656296];      // Butterworth section Qs
+        for (let i = 0; i < 2; i++) {
+            const w = 2 * Math.PI * fc / fs;
+            const cw = Math.cos(w);
+            const a = Math.sin(w) / (2 * q[i]);
+            const a0 = 1 + a;
+            const o = i * 5;
+            this.c[o]     = ((1 - cw) / 2) / a0;
+            this.c[o + 1] = (1 - cw) / a0;
+            this.c[o + 2] = ((1 - cw) / 2) / a0;
+            this.c[o + 3] = (-2 * cw) / a0;
+            this.c[o + 4] = (1 - a) / a0;
+        }
+    }
+
+    reset() {
+        this.s[0] = this.s[1] = this.s[2] = this.s[3] = 0;
+    }
+
+    run(x) {
+        if (this.bypass) return x;
+        for (let i = 0; i < 2; i++) {
+            const o = i * 5;
+            const j = i * 2;
+            const y = this.c[o] * x + this.s[j];
+            this.s[j] = this.c[o + 1] * x - this.c[o + 3] * y + this.s[j + 1];
+            this.s[j + 1] = this.c[o + 2] * x - this.c[o + 4] * y;
+            x = y;
+        }
+        return x;
+    }
+}
+
+// Runs an FV1Core at a clock of its own, independent of the sample rate of
+// whatever is feeding it.
+//
+// The crystal is the FV-1's sample rate, so the obvious way to change it is to
+// build the AudioContext at that rate. But a context's rate is fixed at
+// construction, which makes every change a teardown: delay memory cleared, and
+// whatever was playing started again from the top. That is a power cycle, not a
+// clock adjustment, and it makes the control impossible to sweep.
+//
+// So the audio graph stays at one rate and the core is clocked separately, with
+// the conversion between the two done here. This is not an extra conversion in
+// the signal path: with the context left at the device's own rate, the browser
+// no longer resamples the output on the way out, so the same single conversion
+// happens either way -- here rather than there.
+//
+// Both directions need band limiting, and each needs it on a different side:
+//   - Core slower than the graph. Its input must be cut to the core's Nyquist
+//     before samples are dropped, or the top of the signal folds back over the
+//     middle of it, and its output must be cut to the same place afterwards to
+//     remove the images interpolation leaves behind. Both filters run at the
+//     graph's rate.
+//   - Core faster than the graph. Its input is already band limited by the
+//     graph, but its output is about to be decimated, so that is filtered --
+//     at the core's rate, which is where the aliasing would otherwise happen.
+class FV1Clock {
+    constructor(core, ctxRate) {
+        this.core = core;
+        this.ctxRate = ctxRate > 0 ? ctxRate : 48000;
+        this.coreRate = this.ctxRate;
+        this.ratio = 1;
+        this.passthrough = true;
+
+        // Position of the output instant within the core's sample stream, as a
+        // fraction of a core sample. The four most recent core samples are kept
+        // per channel, newest last, and the output is read between the middle
+        // two of them -- so the clock runs two core samples behind, which at the
+        // slowest crystal here is half a millisecond.
+        this.frac = 0;
+        this.hL = [0, 0, 0, 0];
+        this.hR = [0, 0, 0, 0];
+
+        this.inLP = [new FV1Lowpass(), new FV1Lowpass()];
+        this.outLP = [new FV1Lowpass(), new FV1Lowpass()];
+        this.coreLP = [new FV1Lowpass(), new FV1Lowpass()];
+
+        this.outL = 0;
+        this.outR = 0;
+    }
+
+    // Safe to call between any two samples: only the filter coefficients move,
+    // and the interpolator keeps its place, so a swept crystal does not click.
+    setRate(rate) {
+        const r = (isFinite(rate) && rate > 0) ? rate : this.ctxRate;
+        if (r === this.coreRate) return;
+        this.coreRate = r;
+        this.ratio = r / this.ctxRate;
+        this.passthrough = (r === this.ctxRate);
+
+        // 0.45 rather than 0.5: a Butterworth needs somewhere to roll off, and
+        // the last 5% of the band is where its phase response is worst.
+        const fc = 0.45 * Math.min(r, this.ctxRate);
+        const down = r < this.ctxRate;
+        for (let c = 0; c < 2; c++) {
+            this.inLP[c].set(down ? fc : 0, this.ctxRate);
+            this.outLP[c].set(down ? fc : 0, this.ctxRate);
+            this.coreLP[c].set(down ? 0 : fc, r);
+        }
+    }
+
+    reset() {
+        this.frac = 0;
+        for (let i = 0; i < 4; i++) this.hL[i] = this.hR[i] = 0;
+        this.outL = this.outR = 0;
+        for (let c = 0; c < 2; c++) {
+            this.inLP[c].reset();
+            this.outLP[c].reset();
+            this.coreLP[c].reset();
+        }
+    }
+
+    // One frame of the graph in, one out, left in outL/outR. Nothing is
+    // allocated per sample, so this is safe to call from a worklet.
+    step(inL, inR) {
+        const core = this.core;
+
+        // A crystal that matches the graph is the case the rest of this class
+        // exists to avoid disturbing: one core sample per frame, untouched.
+        if (this.passthrough) {
+            core.run(inL, inR);
+            this.outL = core.getDACL();
+            this.outR = core.getDACR();
+            return;
+        }
+
+        const xL = this.inLP[0].run(inL);
+        const xR = this.inLP[1].run(inR);
+
+        // Advance the core by as many of its samples as fit in this frame.
+        // frac carries the remainder, so a ratio that is not a whole number
+        // keeps its place instead of drifting.
+        this.frac += this.ratio;
+        const hL = this.hL;
+        const hR = this.hR;
+        while (this.frac >= 1) {
+            this.frac -= 1;
+            core.run(xL, xR);
+            hL[0] = hL[1]; hL[1] = hL[2]; hL[2] = hL[3];
+            hR[0] = hR[1]; hR[1] = hR[2]; hR[2] = hR[3];
+            hL[3] = this.coreLP[0].run(core.getDACL());
+            hR[3] = this.coreLP[1].run(core.getDACR());
+        }
+
+        this.outL = this.outLP[0].run(FV1Clock.cubic(hL, this.frac));
+        this.outR = this.outLP[1].run(FV1Clock.cubic(hR, this.frac));
+    }
+
+    // Catmull-Rom between h[1] and h[2]. Straight linear interpolation would be
+    // simpler, but its response sags by 2.5 dB at 10 kHz with the stock crystal
+    // -- audible as a dull top end on a program that is not supposed to have
+    // one. A cubic costs a handful of multiplies and keeps that within a
+    // fraction of a decibel.
+    static cubic(h, t) {
+        const c1 = 0.5 * (h[2] - h[0]);
+        const c2 = h[0] - 2.5 * h[1] + 2 * h[2] - 0.5 * h[3];
+        const c3 = 0.5 * (h[3] - h[0]) + 1.5 * (h[1] - h[2]);
+        return ((c3 * t + c2) * t + c1) * t + h[1];
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = FV1Core;
+    module.exports.FV1Clock = FV1Clock;
+    module.exports.FV1Lowpass = FV1Lowpass;
 }
