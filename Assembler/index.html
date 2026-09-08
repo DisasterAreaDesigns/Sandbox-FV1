@@ -561,7 +561,7 @@
                                 "name": "POT3 / POT4 / POT5",
                                 "syntax": "0x19 / 0x1a / 0x1b",
                                 "description": "Three more control inputs, beyond the FV-1's POT0-POT2",
-                                "notes": "\u2022 Read the same way: rdax POT3, 1.0 or ldax POT3\n\u2022 Contiguous from 0x19, leaving 0x1c-0x1f for POT6-POT9\n\u2022 The simulator shows sliders for these only while an extended program is loaded, and MIDI CC53, CC54 and CC55 sweep them"
+                                "notes": "\u2022 Read the same way: rdax POT3, 1.0 or ldax POT3\n\u2022 Contiguous from 0x19, leaving 0x1c-0x1f for POT6-POT9\n\u2022 The simulator shows sliders for these as soon as the source carries the pragma, and MIDI CC53, CC54 and CC55 sweep them"
                             },
                             {
                                 "name": "SIN2 / SIN3 / RMP2 / RMP3",
@@ -1021,7 +1021,7 @@
                 <div class="sim-slider-row sim-pot-row" id="simPot4Row" style="display:none;" title="POT4"><label for="simPot4"><span id="simPot4Label">POT4</span></label><input type="range" id="simPot4" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot4Value" class="sim-value">50%</span></div>
                 <div class="sim-slider-row sim-pot-row" id="simPot5Row" style="display:none;" title="POT5"><label for="simPot5"><span id="simPot5Label">POT5</span></label><input type="range" id="simPot5" min="0" max="100" value="50" oninput="simSendPots()"><span id="simPot5Value" class="sim-value">50%</span></div>
                 <!-- Only an #extended program can read POT3-POT5, so the rows stay
-                     hidden until one is loaded. Three sliders appearing out of
+                     hidden until the source asks for it. Three sliders appearing out of
                      nowhere wants a word of explanation beside them; three
                      sliders not being there is just an FV-1, and needs none. -->
                 <div id="simPotNote" class="sim-note" style="display:none;">Extended set active: POT3-POT5, and 65536 words of delay</div>
@@ -1097,9 +1097,14 @@
                             onclick="midiConnect()">Enable MIDI</button>
                 </div>
                 <div class="sim-note">
-                    <p><code>CC50</code>-<code>CC52</code> sweep POT0-POT2,
-                    <code>CC53</code>-<code>CC55</code> sweep POT3-POT5 under
-                    <code>#extended</code>.</p>
+                    <p><code>CC50</code>, <code>CC51</code> and <code>CC52</code>
+                    sweep POT0, POT1 and POT2.</p>
+                    <!-- Shown only once a program asks for the pragma, on the
+                         same signal as the POT3-POT5 sliders above: see
+                         simUpdatePotVisibility(). -->
+                    <p id="midiExtendedNote" style="display:none;">
+                    <code>CC53</code>, <code>CC54</code> and <code>CC55</code>
+                    sweep POT3, POT4 and POT5.</p>
                     <p><code>CC60</code> sweeps the clock, 4 kHz to 48 kHz
                     across the full 0-127. The stock 32.768 kHz is value 83.</p>
                     <p><code>CC102</code> switches the effect: 0-63 bypassed,
@@ -1154,11 +1159,10 @@
                 <p>The simulator can be played from a MIDI controller plugged into your computer. Press <b>Enable MIDI</b> in the <b>TEST DRIVE</b> tab, allow the browser's prompt, then choose an <b>Input</b> and <b>Channel</b>. The dot and the line beside the button show the last message that was accepted, which is the quickest way to tell whether a controller is reaching the page at all.</p>
                 <ul>
                     <li><i><b>CC50</b>, <b>CC51</b> and <b>CC52</b> sweep POT0, POT1 and POT2.</i></li>
-                    <li><i><b>CC53</b>, <b>CC54</b> and <b>CC55</b> sweep POT3, POT4 and POT5. Those three exist only under <b>#extended</b>; on a stock build the messages are accepted and the program has nothing to read them with.</i></li>
                     <li><i><b>CC60</b> sweeps the clock across the same 4 kHz to 48 kHz the <b>Rate</b> slider covers - <b>0</b> is 4 kHz, <b>127</b> is 48 kHz, and the stock 32.768 kHz is around <b>83</b>. It changes the crystal while the program runs, so an expression pedal on CC60 stretches every delay and sweep in the program without interrupting it.</i></li>
                     <li><i><b>CC102</b> switches the effect: <b>0-63</b> bypasses, <b>64-127</b> engages.</i></li>
                 </ul>
-                <p>Nothing here responds to MIDI beat clock. <b>CC60</b> is the crystal, not tempo sync: the FV-1 has no tempo to lock to, and on hardware changing it means changing the part. MIDI otherwise moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse. The chosen input and channel are remembered, and a controller unplugged and plugged back in is picked up again on its own.</p>
+                <p>Nothing here responds to MIDI beat clock. <b>CC60</b> is the crystal, not tempo sync: the FV-1 has no tempo to lock to, and on hardware changing it means changing the part. A control change with no control behind it is accepted and does nothing. MIDI otherwise moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse. The chosen input and channel are remembered, and a controller unplugged and plugged back in is picked up again on its own.</p>
                 <p>Web MIDI needs Chrome, Edge or Firefox - Safari does not implement it. Note that the Sandbox pedal itself has no MIDI input; this drives the simulator only.</p>
 
                 <!-- Shown only while the source carries the pragma: see
@@ -1169,7 +1173,7 @@
                     <p>This program carries <b>#extended</b>, which turns on an instruction set beyond the FV-1's own - the same instruction set with the constraints that made sense in silicon in 1999 lifted. <b>An FV-1 does not implement any of it</b>, so an extended build is not a program the Sandbox pedal can run. Delete the line and the extra instructions become errors again, which is the point: without it, this assembler produces exactly the bytes it always did.</p>
                     <ul>
                         <li><i>Delay memory is <b>65536 words</b> rather than 32768 - two seconds at the standard crystal instead of one - and <b>MEM</b> may allocate all of it.</i></li>
-                        <li><i><b>POT3</b>, <b>POT4</b> and <b>POT5</b> join the three the FV-1 has. The simulator shows sliders for them only while an extended program is loaded, and <b>CC53</b>-<b>CC55</b> sweep them.</i></li>
+                        <li><i><b>POT3</b>, <b>POT4</b> and <b>POT5</b> join the three the FV-1 has. The simulator shows sliders for them as soon as the source carries the pragma - you need the slider while you are writing the program that reads it, not after - and <b>CC53</b>, <b>CC54</b> and <b>CC55</b> sweep them.</i></li>
                         <li><i><b>RMPAX</b> reads <b>ADDR_PTR</b> as ACC[22:7] instead of ACC[23:8], keeping the accumulator's sign out of the address so <b>wrax addr_ptr</b> / <b>rmpax</b> sweeps the whole tank with no seam. Plain <b>RMPA</b> still works, and still reaches only the low 32K.</i></li>
                         <li><i><b>RAND</b> loads a register with a uniform random sample - <b>rand reg0, 0.002</b> is a dither, <b>rand reg0, 1.0</b> is full scale - without spending four or five instructions on an LFSR.</i></li>
                         <li><i><b>SIN2</b>, <b>SIN3</b>, <b>RMP2</b> and <b>RMP3</b> double the LFOs, with their eight registers at 0x08-0x0f.</i></li>

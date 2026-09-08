@@ -27,6 +27,7 @@ let simFileBuffer = null;
 let simFileBytes = null;      // undecoded copy, so a rate change can re-decode
 let simFileName = null;
 let simExtended = false;      // was the loaded build assembled with #extended
+let simSourceExtended = false;   // is the editor asking for it, assembled or not
 let simRunning = false;
 let simBypass = false;
 let simLoadedProgram = null;
@@ -876,15 +877,53 @@ function simRefreshControlNames() {
     }
 }
 
-// POT3-POT5 exist only under '#extended'. Hiding them for a stock build keeps
-// the panel honest: a slider a program cannot read is worse than no slider.
+// Follow the editor for the pragma, the way simRefreshControlNames follows it
+// for the pot names, and on the same debounce.
+function simRefreshSourceExtended() {
+    let src = '';
+    try {
+        if (typeof editor !== 'undefined' && editor && editor.getValue) {
+            src = editor.getValue();
+        }
+    } catch (e) { /* editor not up yet */ }
+    const on = typeof FV1Assembler !== 'undefined' &&
+        FV1Assembler.isExtendedSource(src);
+    if (on === simSourceExtended) return;
+    simSourceExtended = on;
+    simUpdatePotVisibility();
+}
+
+// POT3-POT5 exist only under '#extended', and everything the panel says about
+// the extended set is hidden until a program asks for it.
+//
+// Asked of the editor as well as of the loaded build, because the build alone
+// is a chicken and egg: a source that reads POT3 does not assemble until the
+// pragma is there, so a panel waiting for a successful build would never show
+// the slider for the pot you are writing the program to read. You would have to
+// assemble once with the pragma and nothing else, then add the instructions.
+// The instruction reference already follows the editor for the same reason.
+//
+// Both are asked because they answer different questions. The editor says what
+// you are writing; the loaded build says what the core is actually running, and
+// only that decides the tank size simUpdateRateInfo reports.
 function simUpdatePotVisibility() {
+    const show = simExtended || simSourceExtended;
     for (let i = SIM_STOCK_POTS; i < SIM_POT_COUNT; i++) {
         const row = document.getElementById('simPot' + i + 'Row');
-        if (row) row.style.display = simExtended ? '' : 'none';
+        if (row) row.style.display = show ? '' : 'none';
     }
     const note = document.getElementById('simPotNote');
-    if (note) note.style.display = simExtended ? '' : 'none';
+    if (note) {
+        note.style.display = show ? '' : 'none';
+        // The sliders are there either way; the tank is not, until the build
+        // that asked for it is the one loaded.
+        note.textContent = simExtended
+            ? 'Extended set active: POT3-POT5, and 65536 words of delay'
+            : 'Source asks for #extended: POT3-POT5 are shown, and take effect '
+              + 'once it assembles';
+    }
+    const midiNote = document.getElementById('midiExtendedNote');
+    if (midiNote) midiNote.style.display = show ? '' : 'none';
 }
 
 // ---- display --------------------------------------------------------------
@@ -947,6 +986,7 @@ function simHookAssemble() {
     const wrapped = function () {
         const result = original.apply(this, arguments);
         simRefreshControlNames();
+        simRefreshSourceExtended();
         if (typeof assembledData !== 'undefined' && assembledData) {
             // The checkbox chooses what happens to the state the running program
             // built up, not whether the new build is loaded -- an edit always
@@ -967,6 +1007,7 @@ function simHookAssemble() {
 document.addEventListener('DOMContentLoaded', () => {
     simHookAssemble();
     simRefreshControlNames();
+    simRefreshSourceExtended();
     simUpdatePotVisibility();
     simSendPots();
     simOnSourceChange();
@@ -993,6 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // debounce: an Auto pick should follow "; #slot N" as it is typed.
             const onIdle = () => {
                 simRefreshControlNames();
+                simRefreshSourceExtended();
                 if (typeof refreshSlotLabel === 'function') refreshSlotLabel();
             };
             editor.onDidChangeModelContent(() => {

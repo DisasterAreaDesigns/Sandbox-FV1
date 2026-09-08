@@ -38,7 +38,26 @@ require(['vs/editor/editor.main'], function() {
         ]
     });
 
-    monaco.languages.setMonarchTokensProvider('spin', {
+    // The tokenizer is built twice over, and which one is registered follows
+    // the '#extended' line in the editor.
+    //
+    // An extended mnemonic in a source that has not asked for the pragma is an
+    // error, and colouring it like an instruction says the opposite: it makes
+    // RMPAX look like part of the language right up until the assembler refuses
+    // it. Everything else in the app hides the extended set until a program asks
+    // -- the instruction reference, the help section, the simulator's POT3-POT5
+    // sliders -- and highlighting is the one place it was still on show.
+    //
+    // Without the pragma these words fall through to the identifier rule, which
+    // is what they are: undefined names.
+    function spinTokenizer(extended) {
+        const lfo = extended ? '[0-3]' : '[01]';
+        const pot = extended ? '[0-5]' : '[0-2]';
+        const memOps = extended ? 'rda|rmpax|rmpa|wra|wrap' : 'rda|rmpa|wra|wrap';
+        const accOps = extended
+            ? 'rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx|rand'
+            : 'rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx';
+        return {
         ignoreCase: true,
         tokenizer: {
             root: [
@@ -59,25 +78,22 @@ require(['vs/editor/editor.main'], function() {
                 [/\b(equ|mem)\b/, 'keyword.declaration'],
 
                 // Instructions - organized by category
-                [/\b(rda|rmpax|rmpa|wra|wrap)\b/, 'keyword'],
-                [/\b(rdax|rdfx|ldax|wrax|wrhx|wrlx|maxx|absa|mulx|rand)\b/, 'keyword'],
+                [new RegExp('\\b(' + memOps + ')\\b'), 'keyword'],
+                [new RegExp('\\b(' + accOps + ')\\b'), 'keyword'],
                 [/\b(log|exp|sof|and|or|xor|not|clr)\b/, 'keyword'],
                 [/\b(skp|jmp|nop)\b/, 'keyword'],
                 [/\b(wlds|wldr|jam|cho)\b/, 'keyword'],
 
                 // CHO sub-types and LFO names
-                [/\b(sin[0-3]|cos0|cos1|rmp[0-3])\b/, 'constant'],
+                [new RegExp('\\b(sin' + lfo + '|cos0|cos1|rmp' + lfo + ')\\b'), 'constant'],
                 [/\b(sin|cos|reg|compa|compc|rptr2|na)\b/, 'constant'],
                 [/\b(run|zrc|zro|gez|neg)\b/, 'constant'],
 
                 // Registers - specific patterns to avoid partial matches
                 [/\breg([0-9]|[12][0-9]|3[01])\b/, 'variable'],
-                [/\b(sin[0-3]_rate|sin[0-3]_range)\b/, 'variable'],
-                [/\b(rmp[0-3]_rate|rmp[0-3]_range)\b/, 'variable'],
-                // pot3-pot5 exist only under #extended, but the tokenizer
-                // colours them like the rest: it reads shape, not meaning,
-                // and the assembler is what says they need the pragma.
-                [/\b(pot[0-5]|adcl|adcr|dacl|dacr|addr_ptr)\b/, 'variable'],
+                [new RegExp('\\b(sin' + lfo + '_rate|sin' + lfo + '_range)\\b'), 'variable'],
+                [new RegExp('\\b(rmp' + lfo + '_rate|rmp' + lfo + '_range)\\b'), 'variable'],
+                [new RegExp('\\b(pot' + pot + '|adcl|adcr|dacl|dacr|addr_ptr)\\b'), 'variable'],
 
                 // Hex Numbers
                 [/\b0[xX][0-9A-Fa-f]+\b/, 'number.hex'],
@@ -103,7 +119,32 @@ require(['vs/editor/editor.main'], function() {
                 }]
             ]
         }
-    });
+        };
+    }
+
+    // Swap the tokenizer when the source starts or stops asking for the pragma.
+    // The old provider is disposed first: registering a second one for the same
+    // language leaves both in place, and the first registered wins.
+    let spinTokensDisposable = null;
+    let spinTokensExtended = null;
+    window.refreshSpinTokenizer = function () {
+        let src = '';
+        try {
+            if (typeof editor !== 'undefined' && editor && editor.getValue) {
+                src = editor.getValue();
+            }
+        } catch (e) { /* editor not up yet */ }
+        const on = typeof FV1Assembler !== 'undefined' &&
+            FV1Assembler.isExtendedSource(src);
+        if (on === spinTokensExtended) return;
+        spinTokensExtended = on;
+        if (spinTokensDisposable && spinTokensDisposable.dispose) {
+            spinTokensDisposable.dispose();
+        }
+        spinTokensDisposable =
+            monaco.languages.setMonarchTokensProvider('spin', spinTokenizer(on));
+    };
+    window.refreshSpinTokenizer();
 
     monaco.editor.defineTheme('spinTheme', {
         base: 'vs', // or 'vs-dark'
@@ -242,7 +283,11 @@ require(['vs/editor/editor.main'], function() {
         // Add change detection event listener
         editor.onDidChangeModelContent(() => {
             updateChangeState();
+            // Cheap enough to run on every edit: it scans for the pragma and
+            // returns without touching Monaco unless the answer changed.
+            if (window.refreshSpinTokenizer) window.refreshSpinTokenizer();
         });
+        if (window.refreshSpinTokenizer) window.refreshSpinTokenizer();
 
         // Add event listener to make editor editable when user clicks or starts typing
         editor.onDidFocusEditorText(() => {
