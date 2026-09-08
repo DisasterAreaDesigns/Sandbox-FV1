@@ -7,6 +7,7 @@
 
 const assert = require('node:assert/strict');
 const FV1Core = require('../Assembler/fv1-emu.js');
+const {FV1Clock} = FV1Core;
 
 const OP = {
     RDA: 0x00, WRA: 0x02,
@@ -416,6 +417,87 @@ test('a pot written to SIN0_RANGE sets the amplitude, as AN-0001 says', () => {
     const half = settle(0.5), full = settle(1.0);
     assert.ok(Math.abs(half - 0.5) < 0.01, `pot at half gave ${half}`);
     assert.ok(Math.abs(full - 1.0) < 0.01, `pot at full gave ${full}`);
+});
+
+// -------------------------------------------------------------------------
+// FV1Clock runs the core at the crystal rate inside a graph running at some
+// other rate, which is what lets the crystal be swept without rebuilding the
+// audio engine. What has to hold: the core gets exactly the number of samples
+// per second it was asked for, a matching rate is left completely alone, and
+// nothing about the conversion can make the output grow.
+// -------------------------------------------------------------------------
+
+// Stands in for the core, so the clock is measured on its own rather than
+// through a program.
+class CountingCore {
+    constructor() { this.steps = 0; this.l = 0; this.r = 0; }
+    run(l, r) { this.steps++; this.l = l; this.r = r; }
+    getDACL() { return this.l; }
+    getDACR() { return this.r; }
+}
+
+test('the core is clocked at the crystal rate, not the graph rate', () => {
+    for (const [graph, crystal] of [[48000, 32768], [48000, 4000],
+                                    [44100, 20000], [48000, 64000]]) {
+        const core = new CountingCore();
+        const clock = new FV1Clock(core, graph);
+        clock.setRate(crystal);
+        for (let i = 0; i < graph; i++) clock.step(0, 0);
+        // One second of graph time must buy one second of core time. The
+        // fractional accumulator can be mid-sample at the end, hence the 1.
+        assert.ok(Math.abs(core.steps - crystal) <= 1,
+            `graph ${graph}, crystal ${crystal}: ran ${core.steps} steps`);
+    }
+});
+
+test('a crystal matching the graph passes through untouched', () => {
+    const clock = new FV1Clock(new CountingCore(), 48000);
+    clock.setRate(48000);
+    let worst = 0;
+    for (let i = 0; i < 4000; i++) {
+        const x = Math.sin(i * 0.31);
+        clock.step(x, -x);
+        worst = Math.max(worst, Math.abs(clock.outL - x), Math.abs(clock.outR + x));
+    }
+    assert.equal(worst, 0, `passthrough altered the signal by ${worst}`);
+});
+
+test('the conversion band-limits to the core Nyquist rather than folding', () => {
+    const amp = (crystal, freq) => {
+        const clock = new FV1Clock(new CountingCore(), 48000);
+        clock.setRate(crystal);
+        let sum = 0, n = 0;
+        for (let i = 0; i < 24000; i++) {
+            const x = Math.sin(2 * Math.PI * freq * i / 48000);
+            clock.step(x, x);
+            if (i > 12000) { sum += clock.outL * clock.outL; n++; }
+        }
+        return Math.sqrt(sum / n) * Math.SQRT2;
+    };
+    // Well inside the band, a 4 kHz crystal has to pass the signal...
+    assert.ok(amp(4000, 500) > 0.9, 'a 4 kHz crystal lost a 500 Hz tone');
+    // ...and well outside it, reject rather than alias it back in.
+    assert.ok(amp(4000, 6000) < 0.05, 'a 4 kHz crystal folded a 6 kHz tone back in');
+    // The stock crystal must stay close to flat across the audio band.
+    assert.ok(amp(32768, 5000) > 0.95, 'the stock crystal is dull at 5 kHz');
+});
+
+test('sweeping the crystal mid-stream neither clicks nor runs away', () => {
+    const clock = new FV1Clock(new CountingCore(), 48000);
+    let peak = 0, last = 0, jump = 0;
+    for (let i = 0; i < 48000; i++) {
+        // The whole range, in the slider's own steps.
+        clock.setRate(4000 + Math.round((i / 48000) * 44000 / 32) * 32);
+        const x = Math.sin(2 * Math.PI * 300 * i / 48000);
+        clock.step(x, x);
+        peak = Math.max(peak, Math.abs(clock.outL));
+        if (i > 100) jump = Math.max(jump, Math.abs(clock.outL - last));
+        last = clock.outL;
+    }
+    assert.ok(peak < 1.1, `a full sweep peaked at ${peak}`);
+    // A 300 Hz tone at 48 kHz moves by at most 0.04 between samples; anything
+    // near a full-scale step would be the coefficient change audible as a click.
+    assert.ok(jump < 0.2, `a sample-to-sample step of ${jump} during the sweep`);
 });
 
 let failed = 0;
