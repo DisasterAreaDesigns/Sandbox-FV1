@@ -5,7 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sandbox FV-1 Editor</title>
-    <link rel="stylesheet" href="styles.css">
+    <!-- The ?v= on every local script and stylesheet below is the build number
+         in the header bar, and moves with it. Nothing here is served with a
+         Cache-Control header, so a browser is free to go on running the copy it
+         already has: without the query, an update reaches a returning visitor
+         as some files from the new build and some from the old, which fails in
+         ways far stranger than not updating at all. Bump the build number and
+         every one of these becomes a URL no cache has seen. -->
+    <link rel="stylesheet" href="styles.css?v=21">
     <link rel="icon" href="favicon.ico">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,0,1;wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
 </head>
@@ -15,7 +22,7 @@
 
         <!-- Monaco Editor Loader -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-        <script src="monaco.js"></script>
+        <script src="monaco.js?v=21"></script>
 
         <div class="header-bar">
             <div class="header-content">
@@ -28,6 +35,9 @@
                         <text x="32" y="40" text-anchor="middle" fill="white" font-family="League Spartan" font-size="20" font-weight="bold">FV1</text>
                     </svg>
                 </a>
+                <!-- Bump the ?v= on the scripts and stylesheet in <head> and at
+                     the foot of this file to match, or a returning visitor keeps
+                     the last build's copies of them. -->
                 <span class="build">build 21</span>
             </div>
         </div>
@@ -741,14 +751,14 @@
                 }
             }
         </script>
-        <script src="examples.js"></script>
-        <script src="assembler.js"></script>
-        <script src="debug_config.js"></script>
-        <script src="ui.js"></script>
-        <script src="fv1-emu.js"></script>
-        <script src="fv1-sim.js"></script>
-        <script src="fv1-midi.js"></script>
-        <script src="user-preferences.js"></script>
+        <script src="examples.js?v=21"></script>
+        <script src="assembler.js?v=21"></script>
+        <script src="debug_config.js?v=21"></script>
+        <script src="ui.js?v=21"></script>
+        <script src="fv1-emu.js?v=21"></script>
+        <script src="fv1-sim.js?v=21"></script>
+        <script src="fv1-midi.js?v=21"></script>
+        <script src="user-preferences.js?v=21"></script>
     </div>
 
     <!-- Flyout toggles -->
