@@ -22,6 +22,10 @@ We've also added an FV-1 simulator to the web app.  The assembled program runs t
 
 The simulator can also be played from a MIDI controller plugged into your computer.  Press **Enable MIDI** in the simulator panel, allow the browser's MIDI prompt, and pick an input and channel.  `CC50`, `CC51` and `CC52` sweep POT0, POT1 and POT2, and `CC102` switches the effect, with `0-63` bypassed and `64-127` engaged.  MIDI moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse.  Note that the Sandbox pedal itself has no MIDI input - this drives the simulator only.
 
+The simulator can be watched as well as heard.  **Open register viewer** in the simulator panel opens a second window showing `ACC`, the audio in and out, the pots, the LFOs and `REG0`-`REG31` as the program runs, each as its S.23 value and the 24-bit word behind it, and named after the `EQU` lines in your source.  Click a register there to plot it over time - an audio-rate signal shows as its envelope and an LFO as its shape.  **ACC trace in editor** writes the accumulator after every instruction at the end of its line, live: a `SKP` says whether it was taken, the lines it jumped over say so, and a line whose result had to be clamped shows how often that happens.  The FV-1 runs every instruction every sample, so one pass is a complete trace and there is nothing to step through to see it.
+
+When there is, the **Debug** section halts the simulator and steps it.  **Halt** freezes the core at the end of the current sample; **Step** runs one instruction, **Sample** runs the rest of the pass, and **Run to line** goes on until that line is next, with the editor following, the trace showing this pass up to the halt, and the register viewer updating on every step.  Breakpoints are conditions rather than places, since a bare line would trip on the first sample: click the margin left of a line number for a line breakpoint and give it a first run or a sample number, or halt on a clip, a `SKP` going one way, or `ACC` or a register crossing a value.  While halted the output is silent and the input is held at the halted sample; **Resume** carries on from wherever the stepping got to.
+
 So it's a web app and a pedal.  Hook 'em up and write some code!
 
 ## Running the Assembler Locally
@@ -37,7 +41,7 @@ Chrome or Edge are required for programming hardware and selecting folders, sinc
 
 ## What's In This Repo?
 * **ASFV1 Source:**  copies of the Python source for asfv1, the reference assembler this one is checked against
-* **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`) with MIDI control (`fv1-midi.js`)
+* **Assembler:**  JavaScript Web Application for assembling FV-1 programs, including an in-browser FV-1 simulator (`fv1-emu.js` / `fv1-sim.js`) with MIDI control (`fv1-midi.js`), a register viewer (`fv1-regs.js`), an ACC trace in the editor (`fv1-trace.js`) and a halt-and-step debugger with conditional breakpoints (`fv1-debug.js`)
 * **Firmware**  CircuitPython code for the RP2040 Zero program module
 * **spin-test**  Puppeteer scripts and sample FV-1 programs for testing the assembler: `npm run test:roundtrip` for the assembler and simulator as a pair, `npm run test:emu` for the DSP core, `npm run test:midi` for the simulator's MIDI control, and `npm run test:page` for the editor's unsaved-changes guard
 * **Hardware**  Schematic and PCB files for Sandbox pedal hardware
