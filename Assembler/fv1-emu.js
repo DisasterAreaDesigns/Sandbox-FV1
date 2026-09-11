@@ -119,6 +119,22 @@ class FV1Core {
         this.regs = new Float64Array(64);
         this.hasProgram = false;
 
+        // Trace capture, off unless a debugger asks. Every instruction runs
+        // every sample, so one sample's pass is a complete trace: ACC after
+        // each instruction, whether it ran (a skipped one did not), and whether
+        // a SKP was taken. Clips are counted per instruction across samples,
+        // so a line that saturates once in a while can be told from one that
+        // is pinned. Sized for the longest image; PROG_LEN says how much is
+        // in use.
+        this.traceOn = false;
+        this.traceAcc = new Float64Array(this.PROG_LEN_MAX);
+        this.traceRan = new Uint8Array(this.PROG_LEN_MAX);
+        this.traceSkip = new Uint8Array(this.PROG_LEN_MAX);
+        this.clipCount = new Uint32Array(this.PROG_LEN_MAX);
+        this.clipped = false;      // set by clamp24 when it had to clamp
+        this.sampleCount = 0;      // passes run, so clip counts have a rate
+        this.onSample = null;
+
         this.reset();
     }
 
@@ -130,8 +146,8 @@ class FV1Core {
     }
 
     clamp24(v) {
-        if (v > this.ACC_MAX) return this.ACC_MAX;
-        if (v < this.ACC_MIN) return this.ACC_MIN;
+        if (v > this.ACC_MAX) { this.clipped = true; return this.ACC_MAX; }
+        if (v < this.ACC_MIN) { this.clipped = true; return this.ACC_MIN; }
         return v;
     }
 
@@ -338,11 +354,23 @@ class FV1Core {
 
         this.potSmooth = [0, 0, 0, 0, 0, 0];
 
+        this.clearTrace();
+
         // RAND's source. Deterministic and seeded here, so a reset gives the
         // same noise again: the hardware draws from a ring oscillator, but a
         // simulator you can run twice and compare is worth more than one that
         // is unpredictable in the same way.
         this.randState = 0x2545F491;
+    }
+
+    // Clip counts start again from here; a program load or a reset is the
+    // natural place, and a debugger may ask for it on its own.
+    clearTrace() {
+        this.traceAcc.fill(0);
+        this.traceRan.fill(0);
+        this.traceSkip.fill(0);
+        this.clipCount.fill(0);
+        this.sampleCount = 0;
     }
 
     // xorshift32, then taken as a uniform S.23 over [-1, 1).
@@ -532,9 +560,24 @@ class FV1Core {
 
         let pc = 0;
         let guard = 0;
-        while (pc < this.PROG_LEN && guard++ < this.PROG_LEN * 2) {
-            pc = this.step(pc);
+        if (this.traceOn) {
+            this.traceRan.fill(0, 0, this.PROG_LEN);
+            this.traceSkip.fill(0, 0, this.PROG_LEN);
+            while (pc < this.PROG_LEN && guard++ < this.PROG_LEN * 2) {
+                const cur = pc;
+                this.clipped = false;
+                pc = this.step(cur);
+                this.traceAcc[cur] = this.acc;
+                this.traceRan[cur] = 1;
+                if (pc !== cur + 1) this.traceSkip[cur] = 1;
+                if (this.clipped) this.clipCount[cur]++;
+            }
+        } else {
+            while (pc < this.PROG_LEN && guard++ < this.PROG_LEN * 2) {
+                pc = this.step(pc);
+            }
         }
+        this.sampleCount++;
 
         // End of sample period. PACC is latched per instruction inside step()
         // and nothing clocks it at the sample boundary, so it is left alone
@@ -543,6 +586,10 @@ class FV1Core {
         this.delayPtr = (this.delayPtr - 1) & this.DELAY_MASK;
         this.updateLFOs();
         this.firstRun = false;
+        // A per-sample hook for whoever is watching -- the scopes in the
+        // simulator read registers here, at the core's own rate, rather than
+        // at the graph's. Null unless something is listening.
+        if (this.onSample) this.onSample();
     }
 
     getDACL() { return this.regs[this.DACL] / this.ACC_MAX; }

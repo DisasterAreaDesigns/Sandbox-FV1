@@ -41,6 +41,13 @@ let simRate = SIM_RATE;
 // Stand-in rate for decoding a file chosen before the engine has been built.
 const SIM_DECODE_RATE = 48000;
 
+// Points per scope trace. Shared with the worklet, which is built from source.
+const SIM_SCOPE_N = 512;
+
+// What the worklet is asked to watch. `viewer` is the register window, `trace`
+// the per-line readout in the editor; either one keeps snapshots flowing.
+const simWatch = {viewer: false, trace: false, scopes: [], window: 1};
+
 // ---- worklet source -------------------------------------------------------
 
 function buildWorkletSource() {
@@ -60,11 +67,17 @@ function buildWorkletSource() {
         '        this.peakR = 0;',
         '        this.frames = 0;',
         '        this.ledSum = [0, 0];',
+        '        this.watching = false;',
+        '        this.watchFrames = 0;',
+        '        this.scopes = [];',
+        '        this.scopeWindow = 1;',
+        '        this.core.onSample = null;',
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
         '            if (d.type === "program") {',
         '                this.core.setProgram(new Uint8Array(d.bytes), d.reset !== false, d.extended === true);',
         '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
+        '                this.postState();',
         '            } else if (d.type === "pots") {',
         '                this.pots = d.values;',
         '            } else if (d.type === "rate") {',
@@ -72,8 +85,96 @@ function buildWorkletSource() {
         '            } else if (d.type === "reset") {',
         '                this.core.reset();',
         '                this.clock.reset();',
+        '                this.postState();',
+        '            } else if (d.type === "watch") {',
+        '                this.watching = !!d.on;',
+        '                this.watchFrames = 0;',
+        '                this.core.traceOn = !!d.trace;',
+        '                this.setScopes(d.scopes || [], d.window || 1);',
+        '                this.postState();',
         '            }',
         '        };',
+        '    }',
+        // Scopes: a register's value at the end of every sample, folded into
+        // min/max bins so that 512 points cover whatever window is asked for.
+        // An audio-rate signal shows as its envelope and an LFO as its shape,
+        // the way a DAW draws a waveform overview. The bins are kept when the
+        // list is resent with the same registers, so adding a second scope
+        // does not blank the first.
+        '    setScopes(regs, window) {',
+        '        const kept = {};',
+        '        for (const sc of this.scopes) kept[sc.reg] = sc;',
+        '        this.scopes = regs.map(reg => kept[reg] || {',
+        '            reg: reg, min: new Float32Array(SCOPE_N), max: new Float32Array(SCOPE_N),',
+        '            head: 0, binMin: Infinity, binMax: -Infinity, count: 0});',
+        '        if (window !== this.scopeWindow) {',
+        '            this.scopeWindow = window;',
+        '            for (const sc of this.scopes) { sc.min.fill(0); sc.max.fill(0); sc.count = 0; }',
+        '        }',
+        '        this.core.onSample = this.scopes.length ? () => this.sampleScopes() : null;',
+        '    }',
+        '    sampleScopes() {',
+        '        const div = Math.max(1, Math.round(this.scopeWindow * this.clock.coreRate / SCOPE_N));',
+        '        const regs = this.core.regs;',
+        '        for (const sc of this.scopes) {',
+        '            const v = regs[sc.reg] / 8388608;',
+        '            if (v < sc.binMin) sc.binMin = v;',
+        '            if (v > sc.binMax) sc.binMax = v;',
+        '            if (++sc.count >= div) {',
+        '                sc.min[sc.head] = sc.binMin;',
+        '                sc.max[sc.head] = sc.binMax;',
+        '                sc.head = (sc.head + 1) % SCOPE_N;',
+        '                sc.binMin = Infinity; sc.binMax = -Infinity; sc.count = 0;',
+        '            }',
+        '        }',
+        '    }',
+        '    scopeSnapshot() {',
+        '        return this.scopes.map(sc => {',
+        '            const min = new Float32Array(SCOPE_N);',
+        '            const max = new Float32Array(SCOPE_N);',
+        '            for (let i = 0; i < SCOPE_N; i++) {',
+        '                const j = (sc.head + i) % SCOPE_N;',
+        '                min[i] = sc.min[j]; max[i] = sc.max[j];',
+        '            }',
+        '            return {reg: sc.reg, min: min, max: max};',
+        '        });',
+        '    }',
+        // A snapshot of the core for the register viewer. Sent only while a
+        // viewer is open, and then at a rate an eye can follow rather than at
+        // the block rate: the register file is 64 doubles and the copy is
+        // cheap, but there is no point posting it faster than it is drawn.
+        // Values are the core's own S.23 integers; the viewer does the
+        // formatting, so this stays a copy and not a computation.
+        '    postState() {',
+        '        if (!this.watching) return;',
+        '        const c = this.core;',
+        '        const sin = [];',
+        '        const rmp = [];',
+        '        for (let i = 0; i < 4; i++) {',
+        '            const sinSel = i < 2 ? i : i + 2;',
+        '            const rmpSel = i < 2 ? i + 2 : i + 4;',
+        '            sin.push({phase: c.sinPhase[i], value: c.lfoValue(sinSel, 0),',
+        '                      range: c.sinRangeOf(i)});',
+        '            rmp.push({pos: c.rampPos[i], value: c.lfoValue(rmpSel, 0),',
+        '                      amp: c.rampAmpOf(i)});',
+        '        }',
+        // The trace travels as copies. Clip counts and the sample count are
+        // cumulative since the last reset; the page differences successive
+        // snapshots for a rate, or shows the total, and can switch between
+        // the two without the counting starting over.
+        '        let trace = null;',
+        '        if (c.traceOn) {',
+        '            trace = {len: c.PROG_LEN, samples: c.sampleCount,',
+        '                acc: c.traceAcc.slice(0, c.PROG_LEN),',
+        '                ran: c.traceRan.slice(0, c.PROG_LEN),',
+        '                skip: c.traceSkip.slice(0, c.PROG_LEN),',
+        '                clip: c.clipCount.slice(0, c.PROG_LEN)};',
+        '        }',
+        '        this.port.postMessage({type: "state",',
+        '            regs: Array.from(c.regs), acc: c.acc, pacc: c.pacc,',
+        '            sin: sin, rmp: rmp, trace: trace,',
+        '            scopes: this.scopeSnapshot(), window: this.scopeWindow,',
+        '            extended: c.extended, hasProgram: c.hasProgram});',
         '    }',
         '    process(inputs, outputs) {',
         '        const input = inputs[0];',
@@ -109,13 +210,21 @@ function buildWorkletSource() {
         '            this.ledSum[1] = 0;',
         '            this.frames = 0;',
         '        }',
+        '        if (this.watching) {',
+        '            this.watchFrames += outL.length;',
+        '            if (this.watchFrames >= sampleRate / 20) {',
+        '                this.watchFrames = 0;',
+        '                this.postState();',
+        '            }',
+        '        }',
         '        return true;',
         '    }',
         '}',
         'registerProcessor("fv1-processor", FV1Processor);'
     ].join('\n');
 
-    return FV1Core.toString() + '\n' + FV1Lowpass.toString() + '\n' +
+    return 'const SCOPE_N = ' + SIM_SCOPE_N + ';\n' +
+        FV1Core.toString() + '\n' + FV1Lowpass.toString() + '\n' +
         FV1Clock.toString() + '\n' + processor;
 }
 
@@ -162,6 +271,9 @@ async function simInitEngine() {
         if (e.data.type === 'level') {
             simUpdateMeters(e.data.peak);
             simUpdateLEDs(e.data.led);
+        } else if (e.data.type === 'state') {
+            if (typeof simRegsOnState === 'function') simRegsOnState(e.data);
+            if (typeof simTraceOnState === 'function') simTraceOnState(e.data);
         }
     };
 
@@ -189,6 +301,9 @@ async function simInitEngine() {
     simOutputGain = outputGain;
     simDryGain = dryGain;
     simApplyLevels();
+    // A viewer opened before the engine existed -- or across a crystal change,
+    // which rebuilds it -- has to be re-attached to the new worklet.
+    simPushWatch();
     // The worklet's core starts at its own 0.5 default, so a pot moved before
     // the engine existed -- by a slider, or by MIDI -- would otherwise be shown
     // in one place and running in another. A crystal change rebuilds the engine
@@ -316,6 +431,9 @@ function simLoadProgram(opts) {
         simExtended = typeof assembledExtended !== 'undefined' && !!assembledExtended;
         simUpdatePotVisibility();
         simUpdateRateInfo();
+        if (typeof simTraceOnLoad === 'function') {
+            simTraceOnLoad(typeof assembledLines !== 'undefined' ? assembledLines : null);
+        }
     }
     if (!simLoadedProgram) {
         simStatus('Nothing assembled yet - press Assemble first', 'warn');
@@ -768,6 +886,25 @@ function simSendPots() {
 // compare against before it decides a message changed anything.
 window.simGetPots = () => simPots.slice();
 window.simGetRate = () => simRate;
+window.simIsRunning = () => simRunning;
+
+// Change what is watched and tell the worklet. Safe with no engine: the
+// engine asks for the current set when it is built.
+function simSetWatch(patch) {
+    Object.assign(simWatch, patch);
+    simPushWatch();
+}
+
+function simPushWatch() {
+    if (!simNode) return;
+    simNode.port.postMessage({
+        type: 'watch',
+        on: simWatch.viewer || simWatch.trace,
+        trace: simWatch.trace,
+        scopes: simWatch.viewer ? simWatch.scopes.slice() : [],
+        window: simWatch.window
+    });
+}
 
 function simApplyLevels() {
     if (!simCtx) return;
@@ -941,6 +1078,7 @@ function simUpdateTransport() {
         btn.textContent = simRunning ? 'Stop' : 'Play';
         btn.classList.toggle('sim-playing', simRunning);
     }
+    if (typeof simRegsOnTransport === 'function') simRegsOnTransport(simRunning);
 }
 
 function simUpdateMeters(peak) {

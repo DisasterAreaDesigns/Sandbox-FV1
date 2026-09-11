@@ -3,6 +3,7 @@ let assembledData = null;
 // Whether the current build carries '#extended'. The 512-byte image has no
 // pragma in it, so the simulator has to be told what tank size to run.
 let assembledExtended = false;
+let assembledLines = null;   // instruction address -> source line, for the trace
 let outputDirectoryHandle = null;
 let preferredStartDirectory = 'downloads';
 let projectDirectoryHandle = null;
@@ -654,6 +655,7 @@ function assemble() {
         assembler.printCodeListing(); // Add this line - only print listing after successful assembly
         assembledData = assembler.program;
         assembledExtended = !!assembler.extended;
+        assembledLines = assembler.lineMap.slice();
 
         const hex = assembler.toIntelHex();
         document.getElementById('output').value = hex;

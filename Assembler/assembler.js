@@ -51,6 +51,7 @@ class FV1Assembler {
         this.linebuf = [];
         this.sline = 0;
         this.instLine = 0;   // line the current instruction started on
+        this.lineMap = [];   // instruction address -> source line, 1-based
         this.sym = null;
         this.lastLfoName = null;
 
@@ -1076,6 +1077,11 @@ class FV1Assembler {
             this.error(`Max program length exceeded by ${mnemonic}`, this.sline);
             return;
         }
+
+        // One mnemonic is one instruction, so the address it is about to take
+        // is the line's. The simulator's trace is keyed by address and shown
+        // by line, and this is the only place the two meet.
+        this.lineMap[this.icnt] = this.instLine;
 
         switch (mnemonic) {
             case 'AND':

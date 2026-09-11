@@ -1520,6 +1520,29 @@ body.dark-mode .opcodes-notes {
    scoped under .flyout-content to keep the panel's own colour coding. */
 .flyout-content .sim-play-btn.sim-playing { background: #c62828; }
 .flyout-content .sim-panic-btn { background: #7f8c8d; }
+/* The ACC trace, injected after each line by fv1-trace.js. Muted so the
+   source stays the thing being read; the clip mark is the one exception. */
+.monaco-editor .fv1-trace {
+    color: #8a8f98 !important;
+    font-style: italic;
+    opacity: 0.85;
+}
+.monaco-editor .fv1-trace-skip { opacity: 0.45; }
+.monaco-editor .fv1-trace-taken { color: #3b7dd8 !important; }
+.monaco-editor .fv1-trace-clip { color: #d33 !important; font-style: normal; font-weight: 600; }
+body.dark-mode .monaco-editor .fv1-trace-clip { color: #ff6b6b !important; }
+
+.flyout-content .sim-regs-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    background: #3b7dd8;
+    color: #fff;
+}
 
 .sim-status {
     font-size: 0.85em;
