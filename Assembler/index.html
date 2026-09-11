@@ -12,7 +12,7 @@
          as some files from the new build and some from the old, which fails in
          ways far stranger than not updating at all. Bump the build number and
          every one of these becomes a URL no cache has seen. -->
-    <link rel="stylesheet" href="styles.css?v=28">
+    <link rel="stylesheet" href="styles.css?v=29">
     <link rel="icon" href="favicon.ico">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,0,1;wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
 </head>
@@ -22,7 +22,7 @@
 
         <!-- Monaco Editor Loader -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-        <script src="monaco.js?v=28"></script>
+        <script src="monaco.js?v=29"></script>
 
         <div class="header-bar">
             <div class="header-content">
@@ -38,7 +38,7 @@
                 <!-- Bump the ?v= on the scripts and stylesheet in <head> and at
                      the foot of this file to match, or a returning visitor keeps
                      the last build's copies of them. -->
-                <span class="build">build 28</span>
+                <span class="build">build 29</span>
             </div>
         </div>
 
@@ -751,17 +751,17 @@
                 }
             }
         </script>
-        <script src="examples.js?v=28"></script>
-        <script src="assembler.js?v=28"></script>
-        <script src="debug_config.js?v=28"></script>
-        <script src="ui.js?v=28"></script>
-        <script src="fv1-emu.js?v=28"></script>
-        <script src="fv1-sim.js?v=28"></script>
-        <script src="fv1-regs.js?v=28"></script>
-        <script src="fv1-trace.js?v=28"></script>
-        <script src="fv1-debug.js?v=28"></script>
-        <script src="fv1-midi.js?v=28"></script>
-        <script src="user-preferences.js?v=28"></script>
+        <script src="examples.js?v=29"></script>
+        <script src="assembler.js?v=29"></script>
+        <script src="debug_config.js?v=29"></script>
+        <script src="ui.js?v=29"></script>
+        <script src="fv1-emu.js?v=29"></script>
+        <script src="fv1-sim.js?v=29"></script>
+        <script src="fv1-regs.js?v=29"></script>
+        <script src="fv1-trace.js?v=29"></script>
+        <script src="fv1-debug.js?v=29"></script>
+        <script src="fv1-midi.js?v=29"></script>
+        <script src="user-preferences.js?v=29"></script>
     </div>
 
     <!-- Flyout toggles -->
@@ -989,11 +989,8 @@
                 </div>
                 <div id="simRateInfo" class="sim-value">Max delay 1.00 s, Nyquist 16.4 kHz</div>
                 <div class="sim-note">
-                    The crystal the chip is clocked from. Halve it and every delay
-                    and LFO sweep lasts twice as long, and the band ends an octave
-                    lower. Both controls are live: sweep while a program plays and
-                    delay memory keeps its contents. <code>CC60</code> sweeps the
-                    same range from a MIDI controller.
+                    The crystal the chip runs from: halve it and every delay and
+                    LFO sweep lasts twice as long. Both controls are live.
                 </div>
             </div>
 
@@ -1045,12 +1042,21 @@
                 <div class="sim-led-row" title="LED1"><span id="simLed0" class="sim-led"></span><span class="sim-led-name"><span id="simLed0Label">LED1</span></span><span id="simLed0Value" class="sim-value">0%</span></div>
                 <div class="sim-led-row" title="LED2"><span id="simLed1" class="sim-led"></span><span class="sim-led-name"><span id="simLed1Label">LED2</span></span><span id="simLed1Value" class="sim-value">0%</span></div>
                 <div class="sim-note">
-                    <p>Lamps follow <code>REG30</code> and <code>REG31</code> read as
-                    S1.23: 0 is off, 1.0 is full, negative is off. Nothing on the
-                    FV-1 reserves those registers, so a program using them as
-                    scratch will light the lamps by accident.</p>
+                    Lamps follow <code>REG30</code> and <code>REG31</code> read as
+                    S1.23: 0 is off, 1.0 is full, negative is off.
                 </div>
             </div>
+
+            <!-- The register viewer, the debugger and the breakpoints are
+                 folded away by default: most sessions only want to hear the
+                 program, and the three sections together are longer than the
+                 rest of the panel. A halt unfolds them, since that is when
+                 they are wanted. -->
+            <div class="flyout-section sim-fold" id="simDebugToolsSection">
+                <h4 class="sim-fold-head" onclick="simDebugToolsToggle()"
+                    title="Show or hide the register viewer, the debugger and the breakpoints">
+                    <span id="simDebugToolsArrow" class="sim-fold-arrow">&#9654;</span> Debug Tools</h4>
+                <div id="simDebugTools" class="sim-fold-body" hidden>
 
             <div class="flyout-section">
                 <h4>Registers</h4>
@@ -1058,12 +1064,10 @@
                     <button class="sim-regs-btn" onclick="simRegsOpen()"
                             title="Watch ACC, the register file, the pots and the LFOs in a separate window">Open register viewer</button>
                 </div>
-                <div class="sim-note">
-                    A second window showing every register as the program runs:
-                    <code>ACC</code>, <code>ADCL</code>/<code>DACL</code>, the pots,
-                    the LFOs and <code>REG0</code>-<code>REG31</code>, named after
-                    the <code>EQU</code> lines in the editor. Click a register
-                    there to plot it over time.
+                <div class="sim-note" id="simRegsNote">
+                    A floating window showing every register as the program
+                    runs, named after the editor's <code>EQU</code> lines.
+                    Click a register there to plot it over time.
                 </div>
                 <div class="sim-row sim-row-check">
                     <label for="simTrace">ACC trace in editor</label>
@@ -1091,12 +1095,12 @@
                 </div>
                 <div id="simDebugStatus" class="sim-status">Running freely</div>
                 <div class="sim-note">
-                    Halting freezes the core where it stands and hands it to the
-                    page to step, with the editor following. While halted the
-                    output is silent and the input is held at the halted sample.
-                    Resume carries on from wherever the stepping got to.
+                    Halt freezes the core where it stands so you can step it,
+                    with the editor following. The output is silent while halted.
                 </div>
+            </div>
 
+            <div class="flyout-section">
                 <h4>Breakpoints</h4>
                 <div id="simBpList" class="sim-bp-list"></div>
                 <div class="sim-bp-add">
@@ -1128,12 +1132,12 @@
                     <button onclick="simDebugAddFromForm()">Add</button>
                 </div>
                 <div class="sim-note">
-                    Click the margin left of a line number to set a line
-                    breakpoint. Every instruction runs every sample, so a line
-                    on its own halts at once; give it a first run or a sample
-                    number, or halt on a condition instead: a clip, a
-                    <code>SKP</code> going one way, or <code>ACC</code> or a
-                    register crossing a value.
+                    Click left of a line number to set a line breakpoint. A
+                    line on its own halts at once, so give it a condition to
+                    halt on something specific.
+                </div>
+            </div>
+
                 </div>
             </div>
 
@@ -1195,18 +1199,14 @@
                             onclick="midiConnect()">Enable MIDI</button>
                 </div>
                 <div class="sim-note">
-                    <p><code>CC50</code>, <code>CC51</code> and <code>CC52</code>
-                    sweep POT0, POT1 and POT2.</p>
+                    <p><code>CC50</code>-<code>CC52</code> sweep the pots,
+                    <code>CC60</code> the clock (4-48 kHz; 83 is stock), and
+                    <code>CC102</code> bypasses below 64.</p>
                     <!-- Shown only once a program asks for the pragma, on the
                          same signal as the POT3-POT5 sliders above: see
                          simUpdatePotVisibility(). -->
                     <p id="midiExtendedNote" style="display:none;">
-                    <code>CC53</code>, <code>CC54</code> and <code>CC55</code>
-                    sweep POT3, POT4 and POT5.</p>
-                    <p><code>CC60</code> sweeps the clock, 4 kHz to 48 kHz
-                    across the full 0-127. The stock 32.768 kHz is value 83.</p>
-                    <p><code>CC102</code> switches the effect: 0-63 bypassed,
-                    64-127 engaged.</p>
+                    <code>CC53</code>-<code>CC55</code> sweep POT3-POT5.</p>
                 </div>
             </div>
 
@@ -1264,16 +1264,16 @@
                 <p>Web MIDI needs Chrome, Edge or Firefox - Safari does not implement it. Note that the Sandbox pedal itself has no MIDI input; this drives the simulator only.</p>
 
                 <h4>Watching the Program Run</h4>
-                <p>The simulator can be watched as well as heard. Both of these live in the <b>Registers</b> section of the <b>TEST DRIVE</b> tab.</p>
+                <p>The simulator can be watched as well as heard. Both of these live under <b>Debug Tools</b> in the <b>TEST DRIVE</b> tab, along with the debugger; click the heading to unfold them.</p>
                 <ul>
-                    <li><i><b>Open register viewer</b> opens a second window showing <b>ACC</b>, the audio in and out, the pots, the LFOs and <b>REG0</b>-<b>REG31</b> as the program runs - each as its S.23 value and the 24-bit word behind it. Registers are named after the <b>EQU</b> lines in your source, so <b>REG5</b> reads as <b>REG5 feedback</b>. It is a real window: drag it to a second display and leave it there while you edit.</i></li>
+                    <li><i><b>Open register viewer</b> opens a second window showing <b>ACC</b>, the audio in and out, the pots, the LFOs and <b>REG0</b>-<b>REG31</b> as the program runs - each as its S.23 value and the 24-bit word behind it. Registers are named after the <b>EQU</b> lines in your source, so <b>REG5</b> reads as <b>REG5 feedback</b>. It is a real window: drag it to a second display and leave it there while you edit. In Chrome and Edge it floats above the editor with no address bar; <b>Always on top</b> in its header turns that off for an ordinary window.</i></li>
                     <li><i>Click a register name in the viewer to plot it over time. The <b>Window</b> menu sets how much time the plot covers, from 64 ms to 16 s. An audio-rate signal shows as its envelope and an LFO as its shape, so a sweep that is too fast, an envelope follower that never settles, or a feedback path ringing up are all visible at a glance.</i></li>
                     <li><i><b>ACC trace in editor</b> writes the accumulator after every instruction at the end of its line, live, while the program plays. A <b>SKP</b> line says <b>taken</b> when it jumped, the lines it jumped over say <b>skipped</b>, and a line whose result had to be clamped shows <b>clip</b> with the share of recent samples on which that happened - a line pinned at 100% is saturating, one at 2% is catching peaks. The FV-1 runs every instruction every sample, so one pass is a complete trace and there is nothing to step through to see it.</i></li>
                     <li><i>The trace belongs to the build the simulator is running. Edit the source and it disappears until you assemble again, rather than drifting onto the wrong lines.</i></li>
                 </ul>
 
                 <h4>Halting and Stepping</h4>
-                <p>The <b>Debug</b> section of the <b>TEST DRIVE</b> tab stops the simulator where it stands and lets you step it one instruction at a time. Breakpoints only fire while the simulator is running, so assemble and press <b>Play</b> first.</p>
+                <p>The <b>Debug</b> section under <b>Debug Tools</b> stops the simulator where it stands and lets you step it one instruction at a time. Breakpoints only fire while the simulator is running, so assemble and press <b>Play</b> first.</p>
                 <ul>
                     <li><i><b>Halt</b> freezes the core at the end of the current sample. The panel shows where it stopped, a <b>&#9654;</b> in the editor's margin marks the next instruction, and every line above it shows the accumulator value it just produced; lines below show <b>&hellip;</b> because they have not run yet this sample. If the register viewer is open it shows the halted state too.</i></li>
                     <li><i><b>Step</b> runs one instruction. <b>Sample</b> runs the rest of this pass and stops at the top of the next one. <b>Run to line</b> carries on until that line is next, across samples if it has to. Stepping off the last instruction lands on <b>end of sample</b>; one more step starts the next.</i></li>

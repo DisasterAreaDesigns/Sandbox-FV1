@@ -72,6 +72,33 @@ let dbgBpDecorations = {};    // breakpoint id -> Monaco decoration id
 const DBG_ONE = 0x800000;
 const DBG_RUN_BUDGET = 4096;  // samples a "run to line" may cover before giving up
 
+// ---- the Debug Tools fold ---------------------------------------------------
+
+// The register viewer, the debugger and the breakpoints live behind one
+// header in the simulator panel, closed by default. Whether it was left open
+// is remembered, since someone stepping a program tends to keep at it.
+const DBG_FOLD_KEY = 'fv1_sim_debug_tools_open';
+
+function simDebugToolsSet(open) {
+    const section = document.getElementById('simDebugToolsSection');
+    const body = document.getElementById('simDebugTools');
+    if (!section || !body) return;
+    body.hidden = !open;
+    section.classList.toggle('open', open);
+    try { localStorage.setItem(DBG_FOLD_KEY, open ? '1' : '0'); } catch (e) { /* private mode */ }
+}
+
+function simDebugToolsToggle() {
+    const body = document.getElementById('simDebugTools');
+    if (body) simDebugToolsSet(body.hidden);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    let open = false;
+    try { open = localStorage.getItem(DBG_FOLD_KEY) === '1'; } catch (e) { /* private mode */ }
+    if (open) simDebugToolsSet(true);
+});
+
 // ---- halting ----------------------------------------------------------------
 
 function simDebugIsHalted() { return dbgHalted; }
@@ -100,6 +127,7 @@ function simDebugOnHalted(msg) {
     dbgAdc = [dbgCore.regs[dbgCore.ADCL] / dbgCore.ACC_MAX,
               dbgCore.regs[dbgCore.ADCR] / dbgCore.ACC_MAX];
     if (typeof openFlyout === 'function') openFlyout('sim');
+    simDebugToolsSet(true);
     simDebugRefresh();
 }
 

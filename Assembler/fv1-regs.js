@@ -6,17 +6,25 @@
 //
 // It is a real window rather than another flyout because the flyouts share
 // one edge of the screen with the editor, and the point of watching registers
-// is to do it while editing. A popup can be dragged to a second display and
+// is to do it while editing. A window can be dragged to a second display and
 // left there.
 //
-// The window is opened blank and the document written into it, rather than
-// loading a viewer page from the site. Two pages opened from file:// URLs are
-// separate origins in Chrome, and a viewer page loaded that way could not be
-// reached from here at all -- while a blank window is always the opener's
-// origin, whatever the opener was served from. The one cost is that the
-// viewer's markup and styles live in this file rather than in one of their own.
+// Where the browser offers it (Chromium's Document Picture-in-Picture) the
+// window is a floating one: it stays on top of the editor and has no address
+// bar, since a bar reading about:blank over a register file said nothing
+// useful. Elsewhere, and when "Always on top" is turned off in the viewer's
+// own header, it is an ordinary popup.
+//
+// Either way the window is opened blank and the document written into it,
+// rather than loading a viewer page from the site. Two pages opened from
+// file:// URLs are separate origins in Chrome, and a viewer page loaded that
+// way could not be reached from here at all -- while a blank window is always
+// the opener's origin, whatever the opener was served from. The one cost is
+// that the viewer's markup and styles live in this file rather than in one of
+// their own.
 
 let regsWin = null;
+let regsWinFloating = false;   // a picture-in-picture window rather than a popup
 let regsEls = null;            // element handles inside the popup
 let regsPoll = null;           // watches for the window being closed
 let regsThemeObserver = null;
@@ -73,6 +81,10 @@ header h1 { font-size: 15px; margin: 0; font-weight: 600; }
 #status.running { color: var(--ok); }
 #status.warn { color: var(--warn); }
 #rate { font-size: 12px; color: var(--muted); margin-left: auto; }
+#float-ctl { display: flex; align-items: center; gap: 4px; font-size: 11px;
+    color: var(--muted); white-space: nowrap; cursor: pointer; }
+#float-ctl input { margin: 0; }
+#float-ctl.hidden { display: none; }
 h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--muted); margin: 12px 0 4px; font-weight: 600; }
 .rows { display: grid; grid-template-columns: 1fr; gap: 2px; }
@@ -158,7 +170,9 @@ function regsDocument() {
         '<title>FV-1 Registers</title><style>' + REGS_CSS + '</style></head>' +
         '<body class="stopped">' +
         '<header><h1>FV-1 Registers</h1><span id="status">Not running</span>' +
-        '<span id="rate"></span></header>' +
+        '<span id="rate"></span>' +
+        '<label id="float-ctl" title="Keep this window above the editor">' +
+        '<input type="checkbox" id="float"> Always on top</label></header>' +
         '<div class="rows">' + regsRowHtml('acc', 'ACC') + '</div>' +
         '<div id="scopes-head"><h2>Scopes</h2><label for="scope-window">Window</label>' +
         '<select id="scope-window">' +
@@ -193,28 +207,112 @@ function simRegsIsOpen() {
     return !!(regsWin && !regsWin.closed);
 }
 
-function simRegsOpen() {
+// Floating means a Document Picture-in-Picture window: always on top, no
+// address bar. It is the default wherever the browser has it, and the choice
+// is remembered across sessions.
+const REGS_FLOAT_KEY = 'fv1_regs_float';
+const REGS_SIZE = {width: 620, height: 820};
+
+function regsCanFloat() {
+    return typeof window.documentPictureInPicture !== 'undefined' &&
+        typeof window.documentPictureInPicture.requestWindow === 'function';
+}
+
+function regsWantsFloat() {
+    if (!regsCanFloat()) return false;
+    try { return localStorage.getItem(REGS_FLOAT_KEY) !== '0'; } catch (e) { return true; }
+}
+
+function regsRememberFloat(on) {
+    try { localStorage.setItem(REGS_FLOAT_KEY, on ? '1' : '0'); } catch (e) { /* private mode */ }
+}
+
+async function simRegsOpen() {
     if (simRegsIsOpen()) {
         regsWin.focus();
         return;
     }
-    const win = window.open('', 'fv1-registers',
-        'width=620,height=820,resizable=yes,scrollbars=yes');
+    let win = null;
+    let floating = false;
+    if (regsWantsFloat()) {
+        // Needs a user gesture, and there is only ever one such window in
+        // the browser; either refusal falls through to a popup.
+        try {
+            win = await window.documentPictureInPicture.requestWindow(REGS_SIZE);
+            floating = true;
+        } catch (e) { win = null; }
+    }
+    if (!win) {
+        win = window.open('', 'fv1-registers',
+            'width=' + REGS_SIZE.width + ',height=' + REGS_SIZE.height +
+            ',resizable=yes,scrollbars=yes');
+    }
     if (!win) {
         if (typeof simStatus === 'function') {
             simStatus('The register viewer was blocked - allow popups for this page', 'warn');
         }
         return;
     }
+    regsAttach(win, floating);
+}
+
+// Reopen the viewer the other way round. A click inside a floating window
+// counts as a gesture on this page too, so a popup can be opened from it;
+// a click inside a popup does not carry over, and the floating window cannot
+// be requested from there. In that case the choice is remembered, the popup
+// closed, and the button in the panel takes over.
+async function regsSetFloating(on) {
+    regsRememberFloat(on);
+    if (on === regsWinFloating || !simRegsIsOpen()) return;
+    let win = null;
+    if (on) {
+        try { win = await window.documentPictureInPicture.requestWindow(REGS_SIZE); }
+        catch (e) { win = null; }
+    } else {
+        win = window.open('', 'fv1-registers',
+            'width=' + REGS_SIZE.width + ',height=' + REGS_SIZE.height +
+            ',resizable=yes,scrollbars=yes');
+    }
+    const old = regsWin;
+    if (win) {
+        regsAttach(win, on);
+        try { old.close(); } catch (e) { /* already gone */ }
+        return;
+    }
+    simRegsClose();
+    if (typeof openFlyout === 'function') openFlyout('sim');
+    if (typeof simDebugToolsSet === 'function') simDebugToolsSet(true);
+    regsPanelNote('Press <b>Open register viewer</b> to reopen it ' +
+        (on ? 'floating' : 'as a window') + '.');
+    window.focus();
+}
+
+// The note under the panel's button, which carries a message while the
+// viewer is closed and reverts when it opens.
+let regsPanelNoteHtml = null;
+function regsPanelNote(html) {
+    const el = document.getElementById('simRegsNote');
+    if (!el) return;
+    if (html === null) {
+        if (regsPanelNoteHtml !== null) el.innerHTML = regsPanelNoteHtml;
+        return;
+    }
+    if (regsPanelNoteHtml === null) regsPanelNoteHtml = el.innerHTML;
+    el.innerHTML = html;
+}
+
+function regsAttach(win, floating) {
     win.document.open();
     win.document.write(regsDocument());
     win.document.close();
     regsWin = win;
+    regsWinFloating = floating;
     regsEls = null;
     regsAliases = null;        // a fresh document has no names painted yet
     regsCollectEls();
     regsApplyTheme();
     regsRefreshAliases();
+    regsPanelNote(null);
     // Nothing has been posted before the first Play. A file of zeros is what
     // the core holds then, and reads better than a page of empty cells.
     regsPaint(regsLastState || regsBlankState());
@@ -248,6 +346,7 @@ function simRegsClose() {
         try { regsWin.close(); } catch (e) { /* already gone */ }
     }
     regsWin = null;
+    regsWinFloating = false;
     regsEls = null;
     if (typeof simSetWatch === 'function') simSetWatch({viewer: false});
 }
@@ -277,7 +376,13 @@ function regsCollectEls() {
     els.scopes = get('scopes');
     els.scopeWindow = get('scope-window');
     els.scopeCards = {};
+    els.floatCtl = get('float-ctl');
+    els.float = get('float');
     regsEls = els;
+
+    els.floatCtl.classList.toggle('hidden', !regsCanFloat());
+    els.float.checked = regsWinFloating;
+    els.float.addEventListener('change', () => regsSetFloating(els.float.checked));
 
     // Register rows toggle a scope. ACC is not offered: it is zeroed at the
     // end of every sample, which is the only moment a scope reads.

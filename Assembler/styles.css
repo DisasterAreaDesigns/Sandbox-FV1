@@ -1937,3 +1937,37 @@ body.dark-mode .monaco-editor .fv1-trace-clip { color: #ff6b6b !important; }
 #filenameLabel.slot-warn {
     color: #b26a00;
 }
+
+/* The Debug Tools fold in the simulator panel. The header is the whole
+   control; the nested section headers inside it step down a size so the fold
+   still reads as one section of the panel. */
+.sim-fold-head {
+    cursor: pointer;
+    user-select: none;
+}
+.sim-fold-head:hover {
+    color: #007acc;
+}
+.sim-fold-arrow {
+    display: inline-block;
+    width: 12px;
+    font-size: 0.75em;
+    transition: transform 0.2s ease;
+}
+.sim-fold.open .sim-fold-arrow {
+    transform: rotate(90deg);
+}
+.sim-fold-body {
+    padding-top: 10px;
+}
+#simPanel .sim-fold-body .flyout-section h4 {
+    font-size: 0.85em;
+    font-weight: 600;
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 4px;
+    color: var(--flyout-text-muted, #666);
+}
+#simPanel .sim-fold-body .flyout-section:last-child {
+    margin-bottom: 0;
+}
