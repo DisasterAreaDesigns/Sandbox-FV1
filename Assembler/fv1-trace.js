@@ -88,13 +88,31 @@ function simTraceOnState(s) {
     }
     tracePending = null;
     traceLastPaint = now;
+    simTracePaint(s.trace, -1);
+}
 
+// While halted the trace is the pass in progress: lines up to the halt show
+// this sample's values, and the ones it has not reached yet are marked as
+// pending rather than left showing the previous pass. Painted whether or not
+// the trace is switched on -- stepping without it would be stepping blind --
+// but not past a stale build.
+function simTraceOnHalted(s, pc) {
+    if (!s.trace || typeof editor === 'undefined' || !editor || typeof monaco === 'undefined') return;
+    if (simTraceIsStale()) return;
+    simTracePaint(s.trace, pc);
+}
+
+// Back to the live readout, or to nothing if the trace is off.
+function simTraceOnResume() {
+    if (!traceOn) simTraceClear();
+}
+
+function simTracePaint(t, pendingFrom) {
     const model = editor.getModel();
-    const t = s.trace;
     const decs = [];
     // Straight after a reset or a load nothing has run, and a trace of that
     // would call every line skipped. Show nothing until the first pass.
-    if (t.samples === 0) {
+    if (t.samples === 0 && pendingFrom < 0) {
         simTraceClear();
         traceLastClip = null;
         return;
@@ -103,7 +121,10 @@ function simTraceOnState(s) {
         const line = traceLines[pc];
         if (!line || line > model.getLineCount()) continue;
         let text, cls;
-        if (!t.ran[pc]) {
+        if (pendingFrom >= 0 && pc >= pendingFrom) {
+            text = '⇒ …';
+            cls = 'fv1-trace fv1-trace-skip';
+        } else if (!t.ran[pc]) {
             text = '⇒ skipped';
             cls = 'fv1-trace fv1-trace-skip';
         } else {
@@ -133,8 +154,12 @@ function simTraceOnState(s) {
         });
     }
     traceDecorations = editor.deltaDecorations(traceDecorations, decs);
-    traceLastClip = t.clip;
-    traceLastSamples = t.samples;
+    // A halted pass repaints on every step; the clip rate is only meaningful
+    // between snapshots of the running core.
+    if (pendingFrom < 0) {
+        traceLastClip = t.clip;
+        traceLastSamples = t.samples;
+    }
 }
 
 // The counts arrive cumulative, so each snapshot is compared with the one

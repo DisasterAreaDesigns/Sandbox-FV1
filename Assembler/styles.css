@@ -1532,6 +1532,72 @@ body.dark-mode .opcodes-notes {
 .monaco-editor .fv1-trace-clip { color: #d33 !important; font-style: normal; font-weight: 600; }
 body.dark-mode .monaco-editor .fv1-trace-clip { color: #ff6b6b !important; }
 
+/* Debugger: the halted line, the breakpoint glyphs, and the panel controls. */
+.monaco-editor .fv1-debug-line { background: rgba(59, 125, 216, 0.18); }
+.monaco-editor .fv1-debug-arrow::before {
+    content: '\25B6';
+    color: #3b7dd8;
+    font-size: 10px;
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+.monaco-editor .fv1-bp-glyph::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #d33;
+    transform: translateY(-50%);
+}
+.monaco-editor .fv1-bp-glyph-cond::before { background: #e08a1e; border-radius: 2px; }
+.monaco-editor .margin-view-overlays .cgmr { cursor: pointer; }
+
+.flyout-content .sim-dbg-btn {
+    flex: 1;
+    padding: 8px 6px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+    background: #3b7dd8;
+    color: #fff;
+}
+.flyout-content .sim-dbg-btn:disabled { opacity: 0.45; cursor: default; }
+.flyout-content .sim-dbg-btn.sim-dbg-halted { background: #e08a1e; }
+.sim-status-halted { color: #e08a1e; }
+.sim-inline { display: inline-flex; gap: 6px; align-items: center; }
+.flyout-content input.sim-num { width: 5.5em; padding: 3px 4px; font-size: 0.85em;
+    border: 1px solid var(--flyout-border, #dee2e6); border-radius: 3px;
+    background: var(--flyout-input-bg, #fff); color: var(--flyout-text, #333); }
+/* The panel's buttons and selects are full-width by default, which is right
+   for a row of one control and wrong for these: a list row is a checkbox, a
+   label and a small remove button, and the add form is several small
+   controls that wrap. */
+.sim-bp-list { margin: 4px 0 6px; font-size: 0.85em; }
+.sim-bp-empty { color: var(--flyout-text-muted, #666); font-style: italic; }
+.sim-bp-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.sim-bp-row input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+.sim-bp-row .sim-bp-label { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sim-bp-row .sim-bp-link { cursor: pointer; }
+.sim-bp-row .sim-bp-link:hover { text-decoration: underline; }
+.sim-bp-unresolved .sim-bp-label { color: var(--flyout-text-muted, #666); font-style: italic; }
+.sim-bp-off .sim-bp-label { opacity: 0.5; }
+.flyout-content .sim-bp-row .sim-bp-remove { flex: 0 0 auto; width: auto; padding: 1px 7px;
+    font-size: 0.8em; line-height: 1.5; border-radius: 3px; }
+.sim-bp-add { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.flyout-content .sim-bp-add select { width: auto; flex: 0 1 auto; max-width: 100%;
+    font-size: 0.85em; padding: 3px 4px; border-radius: 3px; }
+.flyout-content .sim-bp-add #simBpReg { flex: 1 1 8em; }
+.flyout-content .sim-bp-add button { width: auto; padding: 4px 12px; font-size: 0.85em; border-radius: 3px; }
+.flyout-content .sim-inline button { width: auto; padding: 4px 12px; font-size: 0.85em; border-radius: 3px; }
+
 .flyout-content .sim-regs-btn {
     flex: 1;
     padding: 8px 12px;

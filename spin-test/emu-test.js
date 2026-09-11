@@ -500,6 +500,71 @@ test('sweeping the crystal mid-stream neither clicks nor runs away', () => {
     assert.ok(jump < 0.2, `a sample-to-sample step of ${jump} during the sweep`);
 });
 
+// -------------------------------------------------------------------------
+// The debugger takes a pass apart: it halts the core partway through a sample
+// from the instruction hook, moves the whole state to another core, steps it
+// there, and hands the state back. What has to hold: a halted pass can be
+// finished elsewhere and give the same answer, and nothing is lost in the
+// transfer -- including the delay tank and the LFO phases.
+// -------------------------------------------------------------------------
+
+// A feedback delay with an LFO: state in every place a transfer could miss.
+const debugProgram = [
+    word(S1_14(1.0), REG.ADCL, OP.RDAX),
+    wordDel(S1_9(0.5), 1000, OP.RDA),
+    wordDel(S1_9(0.5), 0, OP.WRA),
+    word(0, REG.REG0, OP.WRAX),
+    word(S1_14(1.0), REG.REG0, OP.RDAX),
+    word(0, REG.DACL, OP.WRAX),
+];
+
+test('a pass halted by the hook finishes elsewhere to the same result', () => {
+    const a = load(debugProgram);
+    const b = load(debugProgram);
+    const input = (n) => Math.sin(n * 0.3) * 0.5;
+    for (let n = 0; n < 2000; n++) a.run(input(n), 0);
+
+    // Halt A after its third instruction of the next sample.
+    a.onInstruction = (cur) => cur === 2;
+    a.run(input(2000), 0);
+    assert.equal(a.haltedPc, 3, 'the hook should have halted after pc 2');
+    a.onInstruction = null;
+
+    // Carry everything to B, which finishes the sample and runs on.
+    b.importState(a.exportState());
+    assert.equal(b.execute(b.haltedPc), b.PROG_LEN);
+    b.endSample();
+    const outB = [];
+    for (let n = 2001; n < 2400; n++) { b.run(input(n), 0); outB.push(b.getDACL()); }
+
+    // A, allowed to finish and run on by itself, must agree bit for bit.
+    assert.equal(a.execute(a.haltedPc), a.PROG_LEN);
+    a.endSample();
+    for (let n = 2001; n < 2400; n++) {
+        a.run(input(n), 0);
+        assert.equal(a.getDACL(), outB[n - 2001], `sample ${n} differs after the transfer`);
+    }
+});
+
+test('a state round trip is complete', () => {
+    const a = load(debugProgram);
+    for (let n = 0; n < 3000; n++) a.run(Math.sin(n * 0.1), Math.cos(n * 0.07));
+    const s = a.exportState();
+    const b = load(debugProgram);
+    b.importState(s);
+    for (const key of ['acc', 'pacc', 'lr', 'delayPtr', 'firstRun', 'randState',
+                       'sampleCount', 'haltedPc']) {
+        assert.equal(b[key], a[key], key);
+    }
+    assert.deepEqual(Array.from(b.regs), Array.from(a.regs), 'regs');
+    assert.deepEqual(Array.from(b.delay), Array.from(a.delay), 'delay');
+    assert.deepEqual(b.sinPhase, a.sinPhase, 'sinPhase');
+    assert.deepEqual(b.rampPos, a.rampPos, 'rampPos');
+    // And a copy, not a view: running A on must not move B.
+    a.run(0.3, 0.3);
+    assert.notEqual(b.sampleCount, a.sampleCount);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
     try {

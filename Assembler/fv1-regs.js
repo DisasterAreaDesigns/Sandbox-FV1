@@ -533,10 +533,12 @@ function regsPaint(s) {
 function regsUpdateStatus() {
     if (!regsEls || !simRegsIsOpen()) return;
     const running = typeof simIsRunning === 'function' && simIsRunning();
+    const halted = typeof simDebugIsHalted === 'function' && simDebugIsHalted();
     const hasProg = !regsLastState || regsLastState.hasProgram;
-    regsEls.body.classList.toggle('stopped', !running);
+    regsEls.body.classList.toggle('stopped', !running && !halted);
     let text, cls;
-    if (running && hasProg) { text = 'Running'; cls = 'running'; }
+    if (halted) { text = 'Halted - ' + simDebugWhere(); cls = 'warn'; }
+    else if (running && hasProg) { text = 'Running'; cls = 'running'; }
     else if (running) { text = 'No program loaded'; cls = 'warn'; }
     else { text = regsLastState ? 'Stopped' : 'Not running'; cls = ''; }
     regsSet(regsEls.status, text);

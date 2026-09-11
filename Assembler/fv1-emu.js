@@ -134,6 +134,8 @@ class FV1Core {
         this.clipped = false;      // set by clamp24 when it had to clamp
         this.sampleCount = 0;      // passes run, so clip counts have a rate
         this.onSample = null;
+        this.onInstruction = null;
+        this.haltedPc = -1;        // where execute() stopped short, or -1
 
         this.reset();
     }
@@ -547,9 +549,23 @@ class FV1Core {
     // Runs one full pass over the program -- 128 instructions, or 256 for an
     // image built long. adcL/adcR are floats in [-1, 1].
     // Returns nothing; read outputs with getDAC().
+    //
+    // The pass is three pieces so a debugger can take it apart: the ADC
+    // write, the instructions, and the end-of-sample housekeeping. A run is
+    // all three, unless the instruction hook halts it partway -- then the
+    // sample is left open at haltedPc, for whoever asked to finish.
     run(adcL, adcR) {
         if (!this.hasProgram) return;
+        this.beginSample(adcL, adcR);
+        const pc = this.execute(0);
+        if (pc < this.PROG_LEN) {
+            this.haltedPc = pc;
+            return;
+        }
+        this.endSample();
+    }
 
+    beginSample(adcL, adcR) {
         // Round rather than truncate. This is a model boundary rather than chip
         // behaviour -- a real ADC hands over an integer and there is no float to
         // convert -- but flooring biases every input sample down by half an LSB,
@@ -557,27 +573,45 @@ class FV1Core {
         // model agree bit for bit with an independent one.
         this.regs[this.ADCL] = this.clamp24(Math.round(adcL * this.ACC_MAX));
         this.regs[this.ADCR] = this.clamp24(Math.round(adcR * this.ACC_MAX));
-
-        let pc = 0;
-        let guard = 0;
+        this.haltedPc = -1;
         if (this.traceOn) {
             this.traceRan.fill(0, 0, this.PROG_LEN);
             this.traceSkip.fill(0, 0, this.PROG_LEN);
+        }
+    }
+
+    // Instructions from pc to the end of the program. Returns the pc it
+    // stopped at: PROG_LEN when the pass is complete, or earlier when the
+    // instruction hook asked to halt -- it is called after each instruction
+    // with the address just executed and the one coming next, and halts by
+    // returning true. The hook and the trace share one loop; the plain loop
+    // below it is what runs when neither is wanted.
+    execute(pc) {
+        let guard = 0;
+        if (this.traceOn || this.onInstruction) {
             while (pc < this.PROG_LEN && guard++ < this.PROG_LEN * 2) {
                 const cur = pc;
                 this.clipped = false;
                 pc = this.step(cur);
-                this.traceAcc[cur] = this.acc;
-                this.traceRan[cur] = 1;
-                if (pc !== cur + 1) this.traceSkip[cur] = 1;
-                if (this.clipped) this.clipCount[cur]++;
+                if (this.traceOn) {
+                    this.traceAcc[cur] = this.acc;
+                    this.traceRan[cur] = 1;
+                    if (pc !== cur + 1) this.traceSkip[cur] = 1;
+                    if (this.clipped) this.clipCount[cur]++;
+                }
+                if (this.onInstruction && this.onInstruction(cur, pc)) return pc;
             }
         } else {
             while (pc < this.PROG_LEN && guard++ < this.PROG_LEN * 2) {
                 pc = this.step(pc);
             }
         }
+        return pc;
+    }
+
+    endSample() {
         this.sampleCount++;
+        this.haltedPc = -1;
 
         // End of sample period. PACC is latched per instruction inside step()
         // and nothing clocks it at the sample boundary, so it is left alone
@@ -590,6 +624,46 @@ class FV1Core {
         // simulator read registers here, at the core's own rate, rather than
         // at the graph's. Null unless something is listening.
         if (this.onSample) this.onSample();
+    }
+
+    // ---- state transfer ------------------------------------------------
+    //
+    // Everything a pass depends on, so a core can be frozen in one thread and
+    // continued in another. The program itself is not included: it is 512 or
+    // 1024 bytes the caller already has, and setProgram is the way to load it.
+    // The delay tank is copied rather than shared, at 128 KB -- a transfer
+    // would leave the worklet without one.
+
+    exportState() {
+        return {
+            regs: Float64Array.from(this.regs),
+            acc: this.acc, pacc: this.pacc, lr: this.lr,
+            delayPtr: this.delayPtr, firstRun: this.firstRun,
+            sinPhase: this.sinPhase.slice(), rampPos: this.rampPos.slice(),
+            potSmooth: this.potSmooth.slice(), randState: this.randState,
+            delay: Int16Array.from(this.delay),
+            sampleCount: this.sampleCount,
+            clipCount: Uint32Array.from(this.clipCount),
+            traceAcc: Float64Array.from(this.traceAcc),
+            traceRan: Uint8Array.from(this.traceRan),
+            traceSkip: Uint8Array.from(this.traceSkip),
+            haltedPc: this.haltedPc
+        };
+    }
+
+    importState(s) {
+        this.regs.set(s.regs);
+        this.acc = s.acc; this.pacc = s.pacc; this.lr = s.lr;
+        this.delayPtr = s.delayPtr; this.firstRun = s.firstRun;
+        this.sinPhase = s.sinPhase.slice(); this.rampPos = s.rampPos.slice();
+        this.potSmooth = s.potSmooth.slice(); this.randState = s.randState;
+        this.delay.set(s.delay);
+        this.sampleCount = s.sampleCount;
+        this.clipCount.set(s.clipCount);
+        this.traceAcc.set(s.traceAcc);
+        this.traceRan.set(s.traceRan);
+        this.traceSkip.set(s.traceSkip);
+        this.haltedPc = s.haltedPc;
     }
 
     getDACL() { return this.regs[this.DACL] / this.ACC_MAX; }

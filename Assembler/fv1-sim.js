@@ -48,6 +48,40 @@ const SIM_SCOPE_N = 512;
 // the per-line readout in the editor; either one keeps snapshots flowing.
 const simWatch = {viewer: false, trace: false, scopes: [], window: 1};
 
+// ---- snapshots ------------------------------------------------------------
+
+// What the register viewer and the trace are shown: the register file, ACC,
+// the LFOs and the per-line trace, read from a core. Defined once here and
+// stringified into the worklet as well, so the snapshot a halted core is
+// painted from on this thread has exactly the shape of the ones the running
+// one posts. Values are the core's own S.23 integers; formatting is the
+// viewer's job.
+function fv1Snapshot(c) {
+    const sin = [];
+    const rmp = [];
+    for (let i = 0; i < 4; i++) {
+        const sinSel = i < 2 ? i : i + 2;
+        const rmpSel = i < 2 ? i + 2 : i + 4;
+        sin.push({phase: c.sinPhase[i], value: c.lfoValue(sinSel, 0),
+                  range: c.sinRangeOf(i)});
+        rmp.push({pos: c.rampPos[i], value: c.lfoValue(rmpSel, 0),
+                  amp: c.rampAmpOf(i)});
+    }
+    // Clip counts and the sample count are cumulative since the last reset;
+    // the page differences successive snapshots for a rate.
+    let trace = null;
+    if (c.traceOn) {
+        trace = {len: c.PROG_LEN, samples: c.sampleCount,
+            acc: c.traceAcc.slice(0, c.PROG_LEN),
+            ran: c.traceRan.slice(0, c.PROG_LEN),
+            skip: c.traceSkip.slice(0, c.PROG_LEN),
+            clip: c.clipCount.slice(0, c.PROG_LEN)};
+    }
+    return {type: 'state', regs: Array.from(c.regs), acc: c.acc, pacc: c.pacc,
+            sin: sin, rmp: rmp, trace: trace, scopes: [], window: 1,
+            extended: c.extended, hasProgram: c.hasProgram};
+}
+
 // ---- worklet source -------------------------------------------------------
 
 function buildWorkletSource() {
@@ -72,10 +106,16 @@ function buildWorkletSource() {
         '        this.scopes = [];',
         '        this.scopeWindow = 1;',
         '        this.core.onSample = null;',
+        '        this.breakpoints = [];',
+        '        this.halted = false;',
+        '        this.haltRequested = false;',
         '        this.port.onmessage = (e) => {',
         '            const d = e.data;',
         '            if (d.type === "program") {',
         '                this.core.setProgram(new Uint8Array(d.bytes), d.reset !== false, d.extended === true);',
+        // A new program under a halt is a different machine: whatever the
+        // page was stepping no longer applies, so the halt is dropped.
+        '                if (this.halted) this.resume(null);',
         '                this.port.postMessage({type: "loaded", ok: this.core.hasProgram});',
         '                this.postState();',
         '            } else if (d.type === "pots") {',
@@ -85,7 +125,15 @@ function buildWorkletSource() {
         '            } else if (d.type === "reset") {',
         '                this.core.reset();',
         '                this.clock.reset();',
+        '                if (this.halted) this.resume(null);',
         '                this.postState();',
+        '            } else if (d.type === "breakpoints") {',
+        '                this.setBreakpoints(d.list);',
+        '            } else if (d.type === "halt") {',
+        '                this.haltRequested = true;',
+        '                this.installHook();',
+        '            } else if (d.type === "resume") {',
+        '                if (this.halted) this.resume(d.state || null);',
         '            } else if (d.type === "watch") {',
         '                this.watching = !!d.on;',
         '                this.watchFrames = 0;',
@@ -147,34 +195,80 @@ function buildWorkletSource() {
         // formatting, so this stays a copy and not a computation.
         '    postState() {',
         '        if (!this.watching) return;',
+        '        const snap = fv1Snapshot(this.core);',
+        '        snap.scopes = this.scopeSnapshot();',
+        '        snap.window = this.scopeWindow;',
+        '        this.port.postMessage(snap);',
+        '    }',
+        // ---- halting ------------------------------------------------------
+        //
+        // Breakpoints are checked from the core's instruction hook, which is
+        // installed only while there are any (or a halt has been asked for),
+        // so a simulator with none set runs the plain loop. A hit freezes the
+        // core where it stands -- partway through a sample -- and the whole
+        // state goes to the page, which steps its own copy and hands the
+        // result back on resume. While halted the worklet outputs silence.
+        '    setBreakpoints(list) {',
+        '        this.breakpoints = (list || []).map(bp => Object.assign({was: false}, bp));',
+        '        this.installHook();',
+        '    }',
+        '    installHook() {',
+        '        const want = this.breakpoints.length > 0 || this.haltRequested;',
+        '        this.core.onInstruction = want ? (cur, next) => this.check(cur, next) : null;',
+        '    }',
+        '    check(cur, next) {',
         '        const c = this.core;',
-        '        const sin = [];',
-        '        const rmp = [];',
-        '        for (let i = 0; i < 4; i++) {',
-        '            const sinSel = i < 2 ? i : i + 2;',
-        '            const rmpSel = i < 2 ? i + 2 : i + 4;',
-        '            sin.push({phase: c.sinPhase[i], value: c.lfoValue(sinSel, 0),',
-        '                      range: c.sinRangeOf(i)});',
-        '            rmp.push({pos: c.rampPos[i], value: c.lfoValue(rmpSel, 0),',
-        '                      amp: c.rampAmpOf(i)});',
+        '        if (this.haltRequested && next >= c.PROG_LEN) {',
+        '            this.haltRequested = false;',
+        '            return this.halt({kind: "halt"}, next);',
         '        }',
-        // The trace travels as copies. Clip counts and the sample count are
-        // cumulative since the last reset; the page differences successive
-        // snapshots for a rate, or shows the total, and can switch between
-        // the two without the counting starting over.
-        '        let trace = null;',
-        '        if (c.traceOn) {',
-        '            trace = {len: c.PROG_LEN, samples: c.sampleCount,',
-        '                acc: c.traceAcc.slice(0, c.PROG_LEN),',
-        '                ran: c.traceRan.slice(0, c.PROG_LEN),',
-        '                skip: c.traceSkip.slice(0, c.PROG_LEN),',
-        '                clip: c.clipCount.slice(0, c.PROG_LEN)};',
+        '        for (const bp of this.breakpoints) {',
+        '            let hit = false;',
+        '            switch (bp.kind) {',
+        '            case "line":',
+        '                if (cur !== bp.pc) break;',
+        '                hit = bp.when === "always" || (bp.when === "first" && c.firstRun) ||',
+        '                      (bp.when === "sample" && c.sampleCount === bp.sample);',
+        '                break;',
+        '            case "clip":',
+        '                hit = c.clipped && (bp.pc < 0 || cur === bp.pc);',
+        '                break;',
+        '            case "skip":',
+        '                hit = cur === bp.pc && ((next !== cur + 1) === !!bp.taken);',
+        '                break;',
+        '            case "acc":',
+        '            case "reg": {',
+        // Value conditions fire on the edge -- when they become true, not
+        // while they stay true -- or a register sitting above its threshold
+        // would halt again on every instruction after a resume.
+        '                const v = bp.kind === "acc" ? c.acc : c.regs[bp.reg];',
+        '                const t = bp.op === ">" ? v > bp.value : bp.op === "<" ? v < bp.value :',
+        '                          bp.op === ">=" ? v >= bp.value : bp.op === "<=" ? v <= bp.value :',
+        '                          bp.op === "==" ? v === bp.value : v !== bp.value;',
+        '                hit = t && !bp.was;',
+        '                bp.was = t;',
+        '                break;',
+        '            }',
+        '            }',
+        '            if (hit) return this.halt(bp, next);',
         '        }',
-        '        this.port.postMessage({type: "state",',
-        '            regs: Array.from(c.regs), acc: c.acc, pacc: c.pacc,',
-        '            sin: sin, rmp: rmp, trace: trace,',
-        '            scopes: this.scopeSnapshot(), window: this.scopeWindow,',
-        '            extended: c.extended, hasProgram: c.hasProgram});',
+        '        return false;',
+        '    }',
+        '    halt(bp, pc) {',
+        '        this.halted = true;',
+        '        this.core.onInstruction = null;',
+        '        const state = this.core.exportState();',
+        '        state.haltedPc = pc;',
+        '        this.port.postMessage({type: "halted", reason: bp, pc: pc, state: state,',
+        '            snapshot: fv1Snapshot(this.core)});',
+        '        return true;',
+        '    }',
+        '    resume(state) {',
+        '        if (state) this.core.importState(state);',
+        '        this.core.haltedPc = -1;',
+        '        this.halted = false;',
+        '        this.installHook();',
+        '        this.port.postMessage({type: "resumed"});',
         '    }',
         '    process(inputs, outputs) {',
         '        const input = inputs[0];',
@@ -184,9 +278,21 @@ function buildWorkletSource() {
         '        const hasIn = input && input.length > 0 && input[0].length > 0;',
         '        const inL = hasIn ? input[0] : null;',
         '        const inR = hasIn && input.length > 1 ? input[1] : inL;',
+        '        if (this.halted) {',
+        '            outL.fill(0);',
+        '            if (outR) outR.fill(0);',
+        '            return true;',
+        '        }',
         '        for (let i = 0; i < outL.length; i++) {',
         '            this.core.setPots(this.pots);',
         '            this.clock.step(inL ? inL[i] : 0, inR ? inR[i] : 0);',
+        // A breakpoint inside this frame halted the core partway through
+        // its sample. The frames already written stand; the rest are silence.
+        '            if (this.halted) {',
+        '                outL.fill(0, i);',
+        '                if (outR) outR.fill(0, i);',
+        '                return true;',
+        '            }',
         '            const l = this.clock.outL;',
         '            const r = this.clock.outR;',
         '            outL[i] = l;',
@@ -225,7 +331,7 @@ function buildWorkletSource() {
 
     return 'const SCOPE_N = ' + SIM_SCOPE_N + ';\n' +
         FV1Core.toString() + '\n' + FV1Lowpass.toString() + '\n' +
-        FV1Clock.toString() + '\n' + processor;
+        FV1Clock.toString() + '\n' + fv1Snapshot.toString() + '\n' + processor;
 }
 
 // ---- engine ---------------------------------------------------------------
@@ -274,6 +380,10 @@ async function simInitEngine() {
         } else if (e.data.type === 'state') {
             if (typeof simRegsOnState === 'function') simRegsOnState(e.data);
             if (typeof simTraceOnState === 'function') simTraceOnState(e.data);
+        } else if (e.data.type === 'halted') {
+            if (typeof simDebugOnHalted === 'function') simDebugOnHalted(e.data);
+        } else if (e.data.type === 'resumed') {
+            if (typeof simDebugOnResumed === 'function') simDebugOnResumed();
         }
     };
 
@@ -302,8 +412,10 @@ async function simInitEngine() {
     simDryGain = dryGain;
     simApplyLevels();
     // A viewer opened before the engine existed -- or across a crystal change,
-    // which rebuilds it -- has to be re-attached to the new worklet.
+    // which rebuilds it -- has to be re-attached to the new worklet. So do the
+    // breakpoints.
     simPushWatch();
+    if (typeof simDebugPushBreakpoints === 'function') simDebugPushBreakpoints();
     // The worklet's core starts at its own 0.5 default, so a pot moved before
     // the engine existed -- by a slider, or by MIDI -- would otherwise be shown
     // in one place and running in another. A crystal change rebuilds the engine
@@ -434,6 +546,7 @@ function simLoadProgram(opts) {
         if (typeof simTraceOnLoad === 'function') {
             simTraceOnLoad(typeof assembledLines !== 'undefined' ? assembledLines : null);
         }
+        if (typeof simDebugOnLoad === 'function') simDebugOnLoad();
     }
     if (!simLoadedProgram) {
         simStatus('Nothing assembled yet - press Assemble first', 'warn');
@@ -894,6 +1007,14 @@ function simSetWatch(patch) {
     Object.assign(simWatch, patch);
     simPushWatch();
 }
+
+// For the debugger: a message to the worklet, if there is one.
+function simPost(msg) {
+    if (simNode) simNode.port.postMessage(msg);
+    return !!simNode;
+}
+window.simGetLoadedProgram = () => simLoadedProgram;
+window.simIsExtended = () => simExtended;
 
 function simPushWatch() {
     if (!simNode) return;
