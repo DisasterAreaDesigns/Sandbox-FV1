@@ -18,6 +18,45 @@
 // The input while stepping is the ADC as it stood at the halt: the source is
 // audio that only the graph can produce, and a held sample is the honest
 // stand-in. The status line says so.
+//
+// ---- Not done: watch expressions ------------------------------------------
+//
+// A watch expression is a formula kept evaluated as the program runs --
+// `REG5 - REG6`, `abs(DACL)`, `SIN0_RANGE / 1024`, `fb * 0.7` -- shown as a
+// row in the register viewer, scoped like a register, and usable as the
+// condition of a breakpoint. It was considered and left out: the scopes and
+// the register conditions cover most of what it would be used for, and the
+// one thing they do not -- comparing two registers -- has a cheaper answer
+// below. If it is ever wanted, this is what it takes:
+//
+// 1. A parser, in a file of its own so it can be stringified into the
+//    worklet the way fv1Snapshot is. Grammar: numbers, register names
+//    (hardware and REG0-31, plus the program's EQU names, which come from
+//    regsParseAliases and have to be resolved on the page before the
+//    expression is sent), unary minus, + - * /, comparisons, and a few
+//    functions -- abs, min, max, maybe clamp. Compile to a small tree or a
+//    closure over core.regs; no eval, since the text is typed by hand and
+//    runs in the audio thread. Values in and out as S.23 integers divided
+//    by 2^23, so the arithmetic is in the same units the viewer shows.
+//
+// 2. Evaluation. For display only, once per snapshot on the page -- cheap,
+//    no worklet involvement. For a scope, once per sample in core.onSample
+//    beside sampleScopes(): the scope list gains entries that are an
+//    expression rather than a register index. For a breakpoint, once per
+//    instruction in check(): a "expr" kind whose condition is the whole
+//    expression, edge-triggered like "acc" and "reg". Per-instruction cost
+//    is the tree walk times the number of such breakpoints; fine for a
+//    handful, and only while any exist.
+//
+// 3. The viewer: a text box under the register list that adds a row, with
+//    the parse error shown inline; the row is a scope target like any
+//    other. Expressions are kept by their text, re-resolved when the EQU
+//    names change, so a renamed register does not silently break them.
+//
+// The cheaper version, if the itch is only ever "this register against that
+// one": let a breakpoint's right-hand side be a register as well as a
+// constant, and let a scope card overlay a second register. Both are an
+// afternoon and need no parser.
 
 let dbgCore = null;           // the halted core, on this thread
 let dbgPc = -1;               // next instruction; PROG_LEN means the pass is done
