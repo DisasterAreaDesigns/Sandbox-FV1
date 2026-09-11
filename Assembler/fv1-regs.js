@@ -486,16 +486,17 @@ function regsPaint(s) {
         regsSet(r.val, addr + ' smp');
         regsBar(r.fill, addr / (mask + 1), true);
     }
+    const ext = regsShowExtended(s);
     for (const r of REGS_POTS) {
         const row = els.rows['x' + r.i];
-        if (r.ext && row.row) row.row.classList.toggle('hidden', !s.extended);
+        if (r.ext && row.row) row.row.classList.toggle('hidden', !ext);
         regsPaintRow(row, regs[r.i], true);
     }
     for (let n = 0; n < 32; n++) regsPaintRow(els.rows['r' + n], regs[0x20 + n]);
 
     for (let n = 0; n < 4; n++) {
         const L = els.lfo['sin' + n];
-        if (n >= 2 && L.box) L.box.classList.toggle('hidden', !s.extended);
+        if (n >= 2 && L.box) L.box.classList.toggle('hidden', !ext);
         const sin = s.sin[n];
         // AN-0001: f = Kf * R / (2 pi 2^17), with Kf the 9-bit rate field.
         const kf = Math.floor(regs[n < 2 ? 2 * n : 8 + 2 * (n - 2)] / 16384) & 0x1FF;
@@ -512,7 +513,7 @@ function regsPaint(s) {
     }
     for (let n = 0; n < 4; n++) {
         const L = els.lfo['rmp' + n];
-        if (n >= 2 && L.box) L.box.classList.toggle('hidden', !s.extended);
+        if (n >= 2 && L.box) L.box.classList.toggle('hidden', !ext);
         const rmp = s.rmp[n];
         const rateReg = regs[n < 2 ? 4 + 2 * n : 12 + 2 * (n - 2)];
         // The rate field as WLDR wrote it: a signed 16-bit count, negative to
@@ -528,6 +529,21 @@ function regsPaint(s) {
     regsSet(els.rate, typeof simRateLabel === 'function' ? simRateLabel(rate) : rate + ' Hz');
     regsPaintScopes(s);
     regsUpdateStatus();
+}
+
+// The extended rows are shown as soon as the source asks for them, like the
+// pot sliders: the build that reads POT3 cannot exist until the pragma does.
+// The tank size shown for ADDR_PTR still follows the loaded build, since that
+// is the one deciding it.
+function regsShowExtended(s) {
+    if (typeof simShowExtended === 'function') return simShowExtended();
+    return !!(s && s.extended);
+}
+
+// The pragma appeared or went while the viewer is open.
+function regsRefreshExtended() {
+    if (!simRegsIsOpen()) return;
+    regsPaint(regsLastState || regsBlankState());
 }
 
 function regsUpdateStatus() {

@@ -462,7 +462,7 @@ function simDebugFillRegisters() {
             aliases = regsParseAliases(editor.getValue());
         }
     } catch (e) { /* no editor yet */ }
-    const ext = typeof simIsExtended === 'function' && simIsExtended();
+    const ext = typeof simShowExtended === 'function' && simShowExtended();
     const order = [0x14, 0x15, 0x16, 0x17, 0x10, 0x11, 0x12];
     if (ext) order.push(0x19, 0x1a, 0x1b);
     order.push(0x18);

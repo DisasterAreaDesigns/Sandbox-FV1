@@ -12,7 +12,7 @@
          as some files from the new build and some from the old, which fails in
          ways far stranger than not updating at all. Bump the build number and
          every one of these becomes a URL no cache has seen. -->
-    <link rel="stylesheet" href="styles.css?v=25">
+    <link rel="stylesheet" href="styles.css?v=28">
     <link rel="icon" href="favicon.ico">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,0,1;wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
 </head>
@@ -22,7 +22,7 @@
 
         <!-- Monaco Editor Loader -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-        <script src="monaco.js?v=25"></script>
+        <script src="monaco.js?v=28"></script>
 
         <div class="header-bar">
             <div class="header-content">
@@ -38,7 +38,7 @@
                 <!-- Bump the ?v= on the scripts and stylesheet in <head> and at
                      the foot of this file to match, or a returning visitor keeps
                      the last build's copies of them. -->
-                <span class="build">build 25</span>
+                <span class="build">build 28</span>
             </div>
         </div>
 
@@ -751,17 +751,17 @@
                 }
             }
         </script>
-        <script src="examples.js?v=25"></script>
-        <script src="assembler.js?v=25"></script>
-        <script src="debug_config.js?v=25"></script>
-        <script src="ui.js?v=25"></script>
-        <script src="fv1-emu.js?v=25"></script>
-        <script src="fv1-sim.js?v=25"></script>
-        <script src="fv1-regs.js?v=25"></script>
-        <script src="fv1-trace.js?v=25"></script>
-        <script src="fv1-debug.js?v=25"></script>
-        <script src="fv1-midi.js?v=25"></script>
-        <script src="user-preferences.js?v=25"></script>
+        <script src="examples.js?v=28"></script>
+        <script src="assembler.js?v=28"></script>
+        <script src="debug_config.js?v=28"></script>
+        <script src="ui.js?v=28"></script>
+        <script src="fv1-emu.js?v=28"></script>
+        <script src="fv1-sim.js?v=28"></script>
+        <script src="fv1-regs.js?v=28"></script>
+        <script src="fv1-trace.js?v=28"></script>
+        <script src="fv1-debug.js?v=28"></script>
+        <script src="fv1-midi.js?v=28"></script>
+        <script src="user-preferences.js?v=28"></script>
     </div>
 
     <!-- Flyout toggles -->
@@ -1262,6 +1262,36 @@
                 </ul>
                 <p>Nothing here responds to MIDI beat clock. <b>CC60</b> is the crystal, not tempo sync: the FV-1 has no tempo to lock to, and on hardware changing it means changing the part. A control change with no control behind it is accepted and does nothing. MIDI otherwise moves the same controls the sliders do, at the full 128 steps a control change carries, so a program cannot tell the difference between a fader and a mouse. The chosen input and channel are remembered, and a controller unplugged and plugged back in is picked up again on its own.</p>
                 <p>Web MIDI needs Chrome, Edge or Firefox - Safari does not implement it. Note that the Sandbox pedal itself has no MIDI input; this drives the simulator only.</p>
+
+                <h4>Watching the Program Run</h4>
+                <p>The simulator can be watched as well as heard. Both of these live in the <b>Registers</b> section of the <b>TEST DRIVE</b> tab.</p>
+                <ul>
+                    <li><i><b>Open register viewer</b> opens a second window showing <b>ACC</b>, the audio in and out, the pots, the LFOs and <b>REG0</b>-<b>REG31</b> as the program runs - each as its S.23 value and the 24-bit word behind it. Registers are named after the <b>EQU</b> lines in your source, so <b>REG5</b> reads as <b>REG5 feedback</b>. It is a real window: drag it to a second display and leave it there while you edit.</i></li>
+                    <li><i>Click a register name in the viewer to plot it over time. The <b>Window</b> menu sets how much time the plot covers, from 64 ms to 16 s. An audio-rate signal shows as its envelope and an LFO as its shape, so a sweep that is too fast, an envelope follower that never settles, or a feedback path ringing up are all visible at a glance.</i></li>
+                    <li><i><b>ACC trace in editor</b> writes the accumulator after every instruction at the end of its line, live, while the program plays. A <b>SKP</b> line says <b>taken</b> when it jumped, the lines it jumped over say <b>skipped</b>, and a line whose result had to be clamped shows <b>clip</b> with the share of recent samples on which that happened - a line pinned at 100% is saturating, one at 2% is catching peaks. The FV-1 runs every instruction every sample, so one pass is a complete trace and there is nothing to step through to see it.</i></li>
+                    <li><i>The trace belongs to the build the simulator is running. Edit the source and it disappears until you assemble again, rather than drifting onto the wrong lines.</i></li>
+                </ul>
+
+                <h4>Halting and Stepping</h4>
+                <p>The <b>Debug</b> section of the <b>TEST DRIVE</b> tab stops the simulator where it stands and lets you step it one instruction at a time. Breakpoints only fire while the simulator is running, so assemble and press <b>Play</b> first.</p>
+                <ul>
+                    <li><i><b>Halt</b> freezes the core at the end of the current sample. The panel shows where it stopped, a <b>&#9654;</b> in the editor's margin marks the next instruction, and every line above it shows the accumulator value it just produced; lines below show <b>&hellip;</b> because they have not run yet this sample. If the register viewer is open it shows the halted state too.</i></li>
+                    <li><i><b>Step</b> runs one instruction. <b>Sample</b> runs the rest of this pass and stops at the top of the next one. <b>Run to line</b> carries on until that line is next, across samples if it has to. Stepping off the last instruction lands on <b>end of sample</b>; one more step starts the next.</i></li>
+                    <li><i><b>Resume</b> (the Halt button, renamed) carries on from wherever the stepping got to. While halted the output is silent and the input is held at the sample it halted on, so stepping through a delay tail shows what the program does with that one input value rather than continuing the tone.</i></li>
+                    <li><i><b>Reset</b>, or re-assembling with <b>Reset on assemble</b> ticked, clears a halt: the core that was being stepped no longer exists.</i></li>
+                </ul>
+                <p>Breakpoints are conditions rather than places. Every instruction runs every sample, so a breakpoint on a line by itself halts on the very next sample - a fraction of a millisecond after you set it. That is fine when the point is to step through the program from there; for anything else, give it a condition. Two ways to set one:</p>
+                <ul>
+                    <li><i><b>Click the margin</b> just left of a line number. A red dot appears and the line halts on the next sample. Click again to remove it.</i></li>
+                    <li><i><b>Use the form</b> under Breakpoints for something more specific. Pick a kind, fill in the fields, press <b>Add</b>:</i></li>
+                </ul>
+                <ul>
+                    <li><i><b>Line</b> with <b>first run</b> halts only on sample 0, before <b>skp run</b> has started skipping - the way to inspect initialisation code such as a <b>wlds</b>. With <b>on sample #</b> it halts on exactly that sample: <b>32768</b> is one second in at the stock crystal.</i></li>
+                    <li><i><b>Clip</b> halts the first time a line's result is clamped. Leave the line blank for any line.</i></li>
+                    <li><i><b>SKP</b> halts when a branch goes the way you name, <b>taken</b> or <b>not taken</b>.</i></li>
+                    <li><i><b>ACC</b> and <b>Register</b> halt when the value crosses a threshold - <b>DACL &gt; 0.9</b>, <b>REG5 &lt; -0.5</b>. They fire when the condition becomes true, not while it stays true, so a register sitting above its threshold does not halt again on the instruction after every resume. Registers are listed with their <b>EQU</b> names.</i></li>
+                </ul>
+                <p>Each breakpoint in the list has a checkbox to leave it set but quiet, and <b>&#10005;</b> to remove it. Click one to jump to its line. A breakpoint on a line with no instruction - a comment, a blank line, an <b>EQU</b> - is shown greyed until a build gives that line one. Breakpoints follow their lines as you edit above them, and are matched to the build again on every assemble.</p>
 
                 <!-- Shown only while the source carries the pragma: see
                      refreshExtendedReference(). Everything described here is an

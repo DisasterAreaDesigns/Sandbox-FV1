@@ -1015,6 +1015,9 @@ function simPost(msg) {
 }
 window.simGetLoadedProgram = () => simLoadedProgram;
 window.simIsExtended = () => simExtended;
+// Whether the extended set should be *shown*: asked of the editor as well as
+// the build, for the reason simUpdatePotVisibility gives.
+window.simShowExtended = () => simExtended || simSourceExtended;
 
 function simPushWatch() {
     if (!simNode) return;
@@ -1182,6 +1185,10 @@ function simUpdatePotVisibility() {
     }
     const midiNote = document.getElementById('midiExtendedNote');
     if (midiNote) midiNote.style.display = show ? '' : 'none';
+    // The viewer's extended rows and the breakpoint form's register list
+    // follow the same answer.
+    if (typeof regsRefreshExtended === 'function') regsRefreshExtended();
+    if (typeof simDebugFillRegisters === 'function') simDebugFillRegisters();
 }
 
 // ---- display --------------------------------------------------------------
